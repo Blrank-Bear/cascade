@@ -31992,3 +31992,148 @@ class Generator(_V2PipeParent):
             yield from self._v2pipe_relabel(_v2_records(self._v2pipe_rows(base), n))
         finally:
             base.close()
+
+
+
+# ═══════════════ v2 pool-match families, version 2: persistent signal + measurement noise (switchable) ═══════════════
+# The per-family probe (tools/proxy/family_probe.py) shows the version-1 families are
+# near white noise (acf1 0.02-0.28) and too Gaussian (diff kurtosis 1.4-1.6), while
+# the pool median is acf1 0.92 with negative diff autocorrelation (-0.10) and diff
+# kurtosis 2.7: a persistent latent signal observed with heavy-tailed noise, sparse
+# outliers and rounding. Rows are inserted before king rows on a per-row coin; the
+# other stages (mix, pool v1, history match, groups) then apply as before.
+# Configured by an optional `v2_pool2.json` in the config dir.
+_V2POOL2_TAG = 0x7A2F0005
+_V2POOL2_FILE = "v2_pool2.json"
+_V2POOL2_DEFAULTS = {
+    "rate": 0.0,
+    "family_weights": {"signal_noise": 0.40, "latent_counts": 0.35,
+                       "regime_measure": 0.15, "clustered_intermittent": 0.10},
+}
+
+
+def _v2pool2_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2POOL2_FILE
+    if not path.is_file():
+        return dict(_V2POOL2_DEFAULTS)
+    return {**_V2POOL2_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2pool2_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2POOL2_TAG], spawn_key=(i,)))
+
+
+def _v2pool2_persistent_ar(rng, L: int) -> np.ndarray:
+    phi = 1.0 - _v2pool_log_uniform(rng, 1e-3, 0.1)
+    shocks = rng.standard_t(rng.uniform(2.2, 6.0), L)
+    return _v2mix_unit(_v2mix_lfilter([1.0], [1.0, -phi], shocks))
+
+
+def _v2pool2_latent(rng, L: int, periods: tuple) -> np.ndarray:
+    t = np.arange(L, dtype=np.float64)
+    seasonal = sum(rng.uniform(0.0, 1.0) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, p)) for p in periods)
+    return _v2mix_unit(seasonal + rng.uniform(0.2, 1.5) * _v2pool2_persistent_ar(rng, L)
+                       + rng.normal(0.0, 0.5) * _v2mix_trend(rng, t))
+
+
+def _v2pool2_heavy_noise(rng, L: int) -> np.ndarray:
+    noise = rng.standard_t(rng.uniform(3.0, 12.0), L)
+    return noise / max(float(noise.std()), 1e-12)
+
+
+def _v2pool2_outliers(rng, L: int) -> np.ndarray:
+    hits = rng.random(L) < _v2pool_log_uniform(rng, 1e-4, 1e-2)
+    return hits * rng.choice((-1.0, 1.0), L) * rng.exponential(rng.uniform(3.0, 10.0), L)
+
+
+def _v2pool2_observe(rng, latent: np.ndarray) -> np.ndarray:
+    L = latent.size
+    snr = _v2pool_log_uniform(rng, 2.0, 200.0)
+    return latent + (_v2pool2_heavy_noise(rng, L) + _v2pool2_outliers(rng, L)) / snr
+
+
+def _v2pool2_round(rng, y: np.ndarray) -> np.ndarray:
+    if rng.random() < 0.65:
+        return np.round(y)
+    return np.round(y, int(rng.integers(1, 3)))
+
+
+def _v2pool2_signal_noise(rng, L: int, periods: tuple) -> np.ndarray:
+    x = _v2pool2_observe(rng, _v2pool2_latent(rng, L, periods))
+    scale = _v2pool_log_uniform(rng, 1.0, 1e4)
+    y = scale * rng.uniform(0.3, 4.0) + scale * _v2mix_unit(x)
+    return _v2pool2_round(rng, np.maximum(y, 0.0) if rng.random() < 0.7 else y)
+
+
+def _v2pool2_latent_counts(rng, L: int, periods: tuple) -> np.ndarray:
+    log_lam = np.log(_v2pool_log_uniform(rng, 0.5, 5000.0)) + rng.uniform(0.1, 0.8) * _v2pool2_latent(rng, L, periods)
+    lam = np.exp(np.minimum(log_lam, 20.0))
+    if rng.random() < 0.5:
+        return rng.poisson(lam).astype(np.float64)
+    r = _v2pool_log_uniform(rng, 1.0, 100.0)
+    return rng.negative_binomial(r, r / (r + lam)).astype(np.float64)
+
+
+def _v2pool2_regimes(rng, L: int) -> np.ndarray:
+    n_breaks = int(rng.integers(1, 12))
+    cuts = np.sort(rng.choice(np.arange(1, L), n_breaks, replace=False))
+    levels = np.cumsum(rng.standard_normal(n_breaks + 1))
+    return levels[np.searchsorted(cuts, np.arange(L), side="right")]
+
+
+def _v2pool2_regime_measure(rng, L: int, periods: tuple) -> np.ndarray:
+    latent = _v2mix_unit(_v2pool2_regimes(rng, L) + rng.uniform(0.0, 0.5) * _v2pool2_latent(rng, L, periods))
+    x = _v2pool2_observe(rng, latent)
+    scale = _v2pool_log_uniform(rng, 1.0, 1e4)
+    return _v2pool2_round(rng, scale * rng.uniform(0.5, 4.0) + scale * 0.5 * _v2mix_unit(x))
+
+
+def _v2pool2_clustered_intermittent(rng, L: int, periods: tuple) -> np.ndarray:
+    z = _v2pool2_latent(rng, L, periods)
+    p = 1.0 / (1.0 + np.exp(-(rng.uniform(-1.0, 2.5) + rng.uniform(0.5, 2.0) * z)))
+    size = rng.poisson(_v2pool_log_uniform(rng, 1.0, 50.0) * np.exp(0.3 * z)) + 1.0
+    return (rng.random(L) < p) * size
+
+
+_V2POOL2_FAMILIES = {
+    "signal_noise": _v2pool2_signal_noise,
+    "latent_counts": _v2pool2_latent_counts,
+    "regime_measure": _v2pool2_regime_measure,
+    "clustered_intermittent": _v2pool2_clustered_intermittent,
+}
+
+
+def _v2pool2_series(rng, cfg: dict) -> np.ndarray:
+    name = _v2mix_pick_name(rng, cfg["family_weights"])
+    periods = _v2mix_pick_periods(rng)
+    return _V2POOL2_FAMILIES[name](rng, _V2_LENGTH, periods)
+
+
+def _v2pool2_rows(rows, seed: int, cfg: dict) -> Iterator:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2pool2_rng(seed, i)
+        if rng.random() < rate:
+            yield _v2pool2_series(rng, cfg)
+        yield x
+
+
+_V2Pool2Parent = Generator
+
+
+class Generator(_V2Pool2Parent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2pool2_cfg = _v2pool2_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2pool2_on(self) -> bool:
+        return float(self._v2pool2_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2pool2_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        if self._v2pool2_on():
+            base = _v2pool2_rows(base, self._v2pipe_seed, self._v2pool2_cfg)
+        return super()._v2pipe_rows(base)

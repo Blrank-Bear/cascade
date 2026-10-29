@@ -1,0 +1,8 @@
+{
+  "base": {},
+  "hist55": {"v2_history.json": {"rate": 0.55}},
+  "pool2_25": {"v2_pool2.json": {"rate": 0.25}},
+  "mix30": {"v2_mix.json": {"rate": 0.3}},
+  "singleton": {"v2_groups.json": {"policy": "singleton"}},
+  "pool2_hist": {"v2_pool2.json": {"rate": 0.25}, "v2_history.json": {"rate": 0.55}}
+}
