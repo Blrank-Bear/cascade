@@ -181,3 +181,6 @@ cython_debug/
 .cursorindexingignore
 # Claude working files (temp + session notes)
 .claude-work/
+
+# Upstream subnet 91 repo (TensorLink-AI/cascade, cascade-v2)
+upstream/
