@@ -106,3 +106,63 @@ The gaps we could exploit:
 - **More daily-cadence content and long horizons (h=720):** this is thin outside the partner families.
 - **Length:** L=4096 fits the budget best. Longer series up to 32768 are cropped into 4096 windows, giving more varied context per seed.
 - **Throughput and memory by design:** single-threaded, float32 where safe, small batches, under 2 GB of virtual memory, and above 290k values/s per core.
+
+---
+
+# Strengths and weaknesses of all kings (reigns 01–17 plus the October kings)
+
+Reign length = rounds held (`champions/archive/README.md` on `main`). It is the best available proxy for how hard a king was to beat.
+The provenance files carry no scores or margins. The October kings a3e342, f33f40 and b20b875 are not in the archive table.
+Archive entries with 0 rounds have no recorded first round, so their reign length is unknown.
+The current king 04e22672 is archive entry `13-5Gsa19SFpRY9` (uid 31): first round 2026-10-23 and **25 rounds**, still reigning at the 27 Oct sync.
+The assessments below are my judgment from reading the code, not measured results.
+
+## Per king
+
+| # | King | Rounds | Strengths | Weaknesses |
+|---|---|---|---|---|
+| 01 | fullctx-spectral-v12 | 7 | Clean, vectorised numpy, 14 broad dynamics families (AR, regime, OU-vol, spectral GP, chaotic); fast and simple | Generic: no calendars, cadence or measurement artefacts; fixed L=4096; dropped the TempoPFN priors entirely |
+| 02 | heat15 | 4 | Adds sensors, conditional stability, calendar counts, observation/augment layer, seasonal-period table | Curriculum adds complexity for little gain; still mostly generic |
+| 03 | gen-76e2 | 4 | Real-world shapes: tides, weekly demand, flow recession, rate staircases | A small fork; short reign, so the increment was narrow |
+| 04 | foreverking | 14 | First big bet on step_level / piecewise-constant holds (50% exact flats), which beat generic dynamics | Obfuscated names (k00..k20); narrows the corpus toward flats |
+| 05 | gen33 | 6 | Variable length 64–4096, numba AR kernels (speed) | Even more weight on holds (k14 .39, k15 .27); variable length wastes budget |
+| 06 | cs35step25 | 20 | Decisive shift: conditional_stability .41 + step .29 + ar2; simple and strong | Nearly three families only, so it has diversity holes |
+| 07 | gen334 | 8 | 33 families; split cs into drift/flat/countwalk/pulse; energy and healthcare reporting cadence | Diluted the winning cs mix; short reign |
+| 08 | garuda | 21 | 37 families, good balance | Obfuscated (`_qsvNN`); hard to audit |
+| 09 | jenn11 | 31 | 40 families plus tsmixup, pad_prefix, tail_rebase (the first tail law) | 160 KB; complexity starts to balloon |
+| 10 | cascade-apex | 36 | 58 families: met/ops/epi/hawkes/garch/lorenz "chronoforge" zoo; very diverse | Embedded **exec'd source** (scan high=2); it would be refused today |
+| 11 | p1-top-health | 44 | held_rate .364 dominant plus 75 families; heavy-traffic counts, cycle profiles, SARIMA | exec'd code; heavy concentration on one family |
+| 12 | vant-energy-lock85 | 12 | Energy load/price/solar, admin counts, latency queues | Narrow energy focus; short reign |
+| 13 | gen-64a0 | 23 | Cumulative counters, econ staircases, settle_hold, renewal persistence | exec'd code; 480 KB |
+| 14 | V444 | **57** (longest) | Validated long-cycle (257–512 lag) predictor: a tiny, well-targeted change; the strongest increment in the lineage | exec'd code; weights otherwise unchanged |
+| 15 | gen (594 KB) | 21 | 91 families; sticky stations, epidemic season decay, end-of-feed fade | exec'd code; accretion, with many near-zero families |
+| 16 | 5HDv "p2" | 18 | First 2-channel rows in a wrapper that keeps the parent byte-identical | Packed/exec'd sources; channels unrelated to each other |
+| 17 | 5DZv champion-anchored-pack | 9 | Channel 1 rides free under series_points billing | Exploits a billing rule that v2 removes; exec'd code |
+| 17 | 5D7L w9qedrki | – | De-packed, no exec; "teach" stream fitted to real pool feeds (CDC NSSP, RKI, IXP, web) | Fits named feeds, so it drifts as the pool rotates |
+| 17 | 5Epw | – | "Weakness" channels: energy, civic, AQ, FX/yield/crypto | More stacking with rare coins; hard to control the mix |
+| 16 | 5ETn | – | k micro-price/volume pair (the only real coupling) | 981 KB; up to 4 loosely coupled channels |
+| 16 | 5GMz c159 (bc25aa43) | – | Clean single module (no exec); quiet-tail gate; p25 daily/weekly stage | ~21k lines; held_rate .466 |
+| – | c128-wsT2 (a3e342) | – | Evidence-based quiet-regime hold extension; weakness channels chosen where the model lost to its init | Fragile late-stream budget gates |
+| – | c246-acuh (f33f40) | – | Calibration fix (forecasts too low/narrow) with a correlation guard against duplicate channels | Comments stripped, so much harder to audit; tiny insert rates |
+| – | c1933 (b20b875) | – | Broadest pool-native texture, short padded histories, yearly seasonality, perf work | held_rate doubled to ~64% of engine rows; much dead code |
+| **13** | **04e22672 (current)** | **25+** | Scorer-aligned tail laws (hold / median cycle / line over the last 256–720 points); bit-exact speedups; AQ/sensor recalibration | ~35 nested layers; seasonal tuning will drift; pre-v2 budget gates; float64 and threads, a risk under 2 GB |
+
+## What consistently worked
+1. **Holds, steps and staircases:** every long reign from 06 on leaned into them.
+2. **Tail laws aligned to the scorer:** tail_rebase (09) → validated long cycle (14, the longest reign) → LP/MLPX (current). This was the single most effective idea.
+3. **Real-data realism:** measurement artefacts, sentinel codes, integer and zero-inflated counts, reporting cadence, calendars, cadence-correct periods.
+4. **Error-driven additions:** families added exactly where the trained model lost to its init on real sources.
+5. **Paired-duel engineering:** forking the parent byte-identically plus one seeded layer isolates the gain.
+
+## What consistently hurt or limits them
+1. **Over-concentration:** about 64–80% hold-like content. That is risky for the v2 random-init window, where the model must also learn smooth seasonality, trends and noise from scratch.
+2. **Accretion:** 14 → 91+ families and 35 layers, many dead; obfuscation and stripped comments.
+3. **No real multivariate structure:** extra channels are mostly unrelated rows stacked to exploit billing.
+4. **Fitting to the pool snapshot:** families tuned to named feeds and seasons decay as the pool rotates.
+5. **Rule-dependence:** v1 billing tricks, budget gates, exec-packed code and 1–5-channel outputs all break under v2.
+6. **Fixed L=4096 everywhere:** they never explored longer series cropped into several windows.
+
+## What this means for our v2 entry
+- **Keep:** holds (at a moderate share), tail laws, measurement realism, cadence and calendar correctness, short padded histories, seeded substreams.
+- **Fix:** a balanced mix for training from random init; genuine coupled groups in the 32 channels; a clean single module; v2-sized throughput and memory.
+- **Avoid:** copying king code, exec/packed code, budget-gated tricks, over-fitting to the current snapshot.
