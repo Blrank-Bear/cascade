@@ -24,3 +24,10 @@
 - When refactoring, break every function down so each one performs a single, atomic unit of functionality.
 - More code and more functions is accepted; the goal is that each bug fix or performance change maps to exactly one small function.
 - Refactors must preserve behavior (verify with golden-output / digest tests before and after).
+
+# Update rules
+
+- Organize updates by specific functionality (one feature = one clearly named block/section).
+- Implement updates by ADDING new methods/functions/classes. Do not modify or delete existing methods: existing code may be relied on elsewhere.
+- Prefer wrapping (new outer layer, new subclass, new helper called from a new path) over editing existing code. Make new behaviour switchable from config where possible.
+- The atomic-function refactoring rule applies only when explicitly refactoring.
