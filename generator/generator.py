@@ -31513,3 +31513,203 @@ class Generator(_V2PackParent):
     @property
     def name(self) -> str:
         return super().name + "-v2pack"
+
+
+# ═══════════════ v2 mix: broad-dynamics rows for the random-init window (switchable) ═══════════════
+# Adds the generic priors the king lineage dropped after reign 01 (KernelSynth-style kernel
+# compositions, ForecastPFN-style trend x seasonal x noise, multi-seasonal AR) at the cadences
+# of the live eval pool. Rows are inserted before parent rows on a per-row coin, then the
+# unchanged v2 packer packs them. Off unless `v2_mix.json` in the config dir sets rate > 0,
+# so the default output is byte-identical to the v2 pack layer.
+_V2MIX_TAG = 0x7A2F0001
+_V2MIX_FILE = "v2_mix.json"
+_V2MIX_DEFAULTS = {
+    "rate": 0.0,
+    "family_weights": {"kernel_synth": 0.40, "trend_seasonal": 0.35, "multi_seasonal_ar": 0.25},
+    "short_history_frac": 0.30,
+    "short_history_min": 256,
+    "short_history_max": 2048,
+}
+# (cadence, share of the live pool (2026-10-23..25 snapshots), seasonal periods in steps)
+_V2MIX_CADENCES = (
+    ("H", 0.26, (24.0, 168.0)),
+    ("D", 0.22, (7.0, 365.25)),
+    ("15min", 0.19, (96.0, 672.0)),
+    ("min", 0.15, (60.0, 1440.0)),
+    ("5min", 0.14, (288.0, 2016.0)),
+    ("30min", 0.04, (48.0, 336.0)),
+)
+_V2MIX_RFF_FEATURES = 64
+_V2MixParent = Generator
+
+from scipy.signal import lfilter as _v2mix_lfilter
+from scipy.special import ive as _v2mix_ive
+
+
+def _v2mix_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2MIX_FILE
+    if not path.is_file():
+        return dict(_V2MIX_DEFAULTS)
+    return {**_V2MIX_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2mix_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2MIX_TAG], spawn_key=(i,)))
+
+
+def _v2mix_pick_name(rng, weights: dict) -> str:
+    names = sorted(weights)
+    p = np.asarray([float(weights[k]) for k in names], dtype=np.float64)
+    return names[int(rng.choice(len(names), p=p / p.sum()))]
+
+
+def _v2mix_pick_periods(rng) -> tuple:
+    p = np.asarray([c[1] for c in _V2MIX_CADENCES], dtype=np.float64)
+    return _V2MIX_CADENCES[int(rng.choice(len(p), p=p / p.sum()))][2]
+
+
+def _v2mix_unit(x: np.ndarray) -> np.ndarray:
+    sd = float(x.std())
+    return (x - x.mean()) / sd if sd > 1e-12 else x - x.mean()
+
+
+def _v2mix_periodic_component(rng, t: np.ndarray, period: float) -> np.ndarray:
+    lengthscale = rng.uniform(0.5, 2.0)
+    k = np.arange(1, 9)
+    q = _v2mix_ive(k, 1.0 / lengthscale ** 2)
+    w = np.sqrt(q / q.sum())
+    a, b = rng.standard_normal((2, k.size))
+    phase = 2.0 * np.pi * np.outer(k, t) / period
+    return _v2mix_unit((w * a) @ np.cos(phase) + (w * b) @ np.sin(phase))
+
+
+def _v2mix_rbf_component(rng, t: np.ndarray, lengthscale: float) -> np.ndarray:
+    omega = rng.standard_normal(_V2MIX_RFF_FEATURES) / lengthscale
+    phi = rng.uniform(0.0, 2.0 * np.pi, _V2MIX_RFF_FEATURES)
+    weights = rng.standard_normal(_V2MIX_RFF_FEATURES)
+    return _v2mix_unit(weights @ np.cos(np.outer(omega, t) + phi[:, None]))
+
+
+def _v2mix_linear_component(rng, t: np.ndarray) -> np.ndarray:
+    return _v2mix_unit(t * rng.choice((-1.0, 1.0)))
+
+
+def _v2mix_kernel_component(rng, t: np.ndarray, periods: tuple) -> np.ndarray:
+    kind = rng.choice(3, p=(0.5, 0.35, 0.15))
+    if kind == 0:
+        return _v2mix_periodic_component(rng, t, float(rng.choice(periods)))
+    if kind == 1:
+        return _v2mix_rbf_component(rng, t, float(np.exp(rng.uniform(np.log(8.0), np.log(1024.0)))))
+    return _v2mix_linear_component(rng, t)
+
+
+def _v2mix_kernel_synth(rng, L: int, periods: tuple) -> np.ndarray:
+    t = np.arange(L, dtype=np.float64)
+    x = _v2mix_kernel_component(rng, t, periods)
+    for _ in range(int(rng.integers(0, 3))):
+        c = _v2mix_kernel_component(rng, t, periods)
+        x = x * (1.0 + 0.5 * c) if rng.random() < 0.3 else x + rng.uniform(0.2, 1.0) * c
+    return x + rng.uniform(0.0, 0.3) * rng.standard_normal(L)
+
+
+def _v2mix_seasonal_profile(rng, t: np.ndarray, period: float) -> np.ndarray:
+    n_harmonics = int(rng.integers(1, 5))
+    k = np.arange(1, n_harmonics + 1)
+    amp = rng.standard_normal(n_harmonics) / k
+    phase = rng.uniform(0.0, 2.0 * np.pi, n_harmonics)
+    return np.sin(2.0 * np.pi * np.outer(t, k) / period + phase) @ amp
+
+
+def _v2mix_trend(rng, t: np.ndarray) -> np.ndarray:
+    u = t / max(t[-1], 1.0)
+    slope = rng.normal(0.0, 0.5)
+    curve = rng.normal(0.0, 0.3)
+    return slope * u + curve * u * u
+
+
+def _v2mix_trend_seasonal(rng, L: int, periods: tuple) -> np.ndarray:
+    t = np.arange(L, dtype=np.float64)
+    season = np.ones(L)
+    for period in periods:
+        if rng.random() < 0.8:
+            season *= 1.0 + rng.uniform(0.05, 0.6) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, period)) / 3.0
+    noise = rng.weibull(rng.uniform(1.5, 6.0), L)
+    noise = noise / noise.mean()
+    return (1.0 + _v2mix_trend(rng, t)) * season * (1.0 + rng.uniform(0.0, 0.3) * (noise - 1.0))
+
+
+def _v2mix_ar_noise(rng, L: int) -> np.ndarray:
+    phi1 = rng.uniform(-0.2, 0.95)
+    phi2 = rng.uniform(-0.3, min(0.3, 0.99 - phi1)) if rng.random() < 0.4 else 0.0
+    return _v2mix_lfilter([1.0], [1.0, -phi1, -phi2], rng.standard_normal(L))
+
+
+def _v2mix_multi_seasonal_ar(rng, L: int, periods: tuple) -> np.ndarray:
+    t = np.arange(L, dtype=np.float64)
+    drift = np.cumsum(rng.standard_normal(L)) * rng.uniform(0.0, 0.05)
+    amp = 1.0 + 0.3 * _v2mix_rbf_component(rng, t, float(rng.uniform(256.0, 2048.0)))
+    seasonal = sum(rng.uniform(0.3, 1.5) * _v2mix_seasonal_profile(rng, t, p) for p in periods)
+    return amp * seasonal + rng.uniform(0.2, 1.0) * _v2mix_unit(_v2mix_ar_noise(rng, L)) + drift
+
+
+_V2MIX_FAMILIES = {
+    "kernel_synth": _v2mix_kernel_synth,
+    "trend_seasonal": _v2mix_trend_seasonal,
+    "multi_seasonal_ar": _v2mix_multi_seasonal_ar,
+}
+
+
+def _v2mix_scale(rng, x: np.ndarray) -> np.ndarray:
+    scale = float(np.exp(rng.uniform(np.log(0.1), np.log(1e4))))
+    level = scale * rng.uniform(-1.0, 3.0)
+    y = level + scale * _v2mix_unit(x)
+    return np.maximum(y, 0.0) if rng.random() < 0.4 else y
+
+
+def _v2mix_short_history(rng, x: np.ndarray, cfg: dict) -> np.ndarray:
+    if rng.random() >= float(cfg["short_history_frac"]):
+        return x
+    keep = int(rng.integers(int(cfg["short_history_min"]), int(cfg["short_history_max"]) + 1))
+    keep = min(keep, x.size)
+    y = x.copy()
+    y[: x.size - keep] = x[x.size - keep]
+    return y
+
+
+def _v2mix_series(rng, cfg: dict) -> np.ndarray:
+    name = _v2mix_pick_name(rng, cfg["family_weights"])
+    periods = _v2mix_pick_periods(rng)
+    x = _V2MIX_FAMILIES[name](rng, _V2_LENGTH, periods)
+    return _v2mix_short_history(rng, _v2mix_scale(rng, x), cfg)
+
+
+def _v2mix_rows(base, seed: int, cfg: dict) -> Iterator[np.ndarray]:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(base):
+        rng = _v2mix_rng(seed, i)
+        if rng.random() < rate:
+            yield _v2mix_series(rng, cfg)
+        yield x
+
+
+class Generator(_V2MixParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2mix_cfg = _v2mix_load_config(config_dir)
+        self._v2mix_seed = int(seed)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series: int) -> Iterator[dict]:
+        if float(self._v2mix_cfg["rate"]) <= 0.0:
+            yield from super().generate(n_series)
+            return
+        yield from self._v2mix_generate(int(n_series))
+
+    def _v2mix_generate(self, n: int) -> Iterator[dict]:
+        if n <= 0:
+            return
+        base = _V2PackParent.generate(self, _v2_parent_budget(n))
+        try:
+            yield from _v2_records(_v2mix_rows(base, self._v2mix_seed, self._v2mix_cfg), n)
+        finally:
+            base.close()
