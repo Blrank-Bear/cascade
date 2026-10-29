@@ -16,3 +16,5 @@
 
 - `upstream/` — clone of https://github.com/TensorLink-AI/cascade (branch `cascade-v2`), subnet 91. Git-ignored; update with `git -C upstream pull`. Don't commit changes there.
 - Own miner/generator code lives in this repo, outside `upstream/`.
+- `reference/kings/` — exported king generators (study only; never run outside a sandbox, never copy into a submission).
+- `notes/` — analysis notes.
