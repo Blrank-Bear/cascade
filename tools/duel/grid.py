@@ -44,9 +44,7 @@ def build_arm_dir(work: Path, name: str, switches: dict) -> Path:
 def run_duel(*args) -> dict:
     out = subprocess.run([sys.executable, str(DUEL), *map(str, args)], check=True,
                          capture_output=True, text=True).stdout
-    start = out.rfind("
-{
-")
+    start = out.rfind("\n{\n")
     return json.loads(out[start + 1:] if start >= 0 else out[out.index("{"):])
 
 
