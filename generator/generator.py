@@ -31713,3 +31713,282 @@ class Generator(_V2MixParent):
             yield from _v2_records(_v2mix_rows(base, self._v2mix_seed, self._v2mix_cfg), n)
         finally:
             base.close()
+
+
+# ═══════════════ v2 group policy: attention-group labels per record (switchable) ═══════════════
+# Relabels the `groups` of finished v2 records; values are never touched. Policies:
+#   "row"       - each parent row is one group (the packer's labels; default, byte-identical)
+#   "singleton" - every channel is its own group (pure univariate training)
+#   "joint"     - all 32 channels are one group
+#   "mixed"     - per record, "singleton" with probability `singleton_prob`, else "row"
+# Configured by an optional `v2_groups.json` in the config dir.
+_V2GROUPS_TAG = 0x7A2F0002
+_V2GROUPS_FILE = "v2_groups.json"
+_V2GROUPS_DEFAULTS = {"policy": "row", "singleton_prob": 0.5}
+_V2GroupsParent = Generator
+
+
+def _v2groups_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2GROUPS_FILE
+    if not path.is_file():
+        return dict(_V2GROUPS_DEFAULTS)
+    return {**_V2GROUPS_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2groups_singleton(groups: np.ndarray) -> np.ndarray:
+    return np.arange(groups.size, dtype=np.int64)
+
+
+def _v2groups_joint(groups: np.ndarray) -> np.ndarray:
+    return np.zeros(groups.size, dtype=np.int64)
+
+
+def _v2groups_row(groups: np.ndarray) -> np.ndarray:
+    return groups
+
+
+def _v2groups_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2GROUPS_TAG], spawn_key=(i,)))
+
+
+def _v2groups_mixed(groups: np.ndarray, rng, singleton_prob: float) -> np.ndarray:
+    return _v2groups_singleton(groups) if rng.random() < singleton_prob else groups
+
+
+def _v2groups_relabel(groups: np.ndarray, cfg: dict, seed: int, i: int) -> np.ndarray:
+    policy = cfg["policy"]
+    if policy == "singleton":
+        return _v2groups_singleton(groups)
+    if policy == "joint":
+        return _v2groups_joint(groups)
+    if policy == "mixed":
+        return _v2groups_mixed(groups, _v2groups_rng(seed, i), float(cfg["singleton_prob"]))
+    if policy == "row":
+        return _v2groups_row(groups)
+    raise ValueError(f"unknown v2 group policy: {policy!r}")
+
+
+def _v2groups_records(records, cfg: dict, seed: int) -> Iterator[dict]:
+    for i, record in enumerate(records):
+        yield {**record, "groups": _v2groups_relabel(record["groups"], cfg, seed, i)}
+
+
+class Generator(_V2GroupsParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2groups_cfg = _v2groups_load_config(config_dir)
+        self._v2groups_seed = int(seed)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series: int) -> Iterator[dict]:
+        if self._v2groups_cfg["policy"] == "row":
+            yield from super().generate(n_series)
+            return
+        yield from _v2groups_records(super().generate(n_series), self._v2groups_cfg, self._v2groups_seed)
+
+
+
+# ═══════════════ v2 history match: eval-like short contexts (switchable) ═══════════════
+# At eval, a history shorter than 4096 is left-padded with its first value
+# (pyramid_wrapper._prep); about 64% of verdict-ladder windows have under 3072 points
+# of history (median about 1,640), while the king corpus is mostly full-length.
+# With probability `rate`, a row keeps only its last k steps and the rest becomes a
+# first-value pad: the exact input shape of a short eval window. k is drawn from
+# `history_buckets` ([lo, hi, weight], log-uniform inside a bucket), measured on the
+# 2026-10-23/25 pool snapshots with the v2 ladder. All channels of a row share k.
+# Configured by an optional `v2_history.json` in the config dir.
+_V2HIST_TAG = 0x7A2F0003
+_V2HIST_FILE = "v2_history.json"
+_V2HIST_DEFAULTS = {
+    "rate": 0.0,
+    "history_buckets": [
+        [64, 128, 0.0244], [128, 256, 0.0488], [256, 512, 0.1210], [512, 1024, 0.1652],
+        [1024, 2048, 0.1953], [2048, 3072, 0.0899], [3072, 4096, 0.3555],
+    ],
+}
+
+
+def _v2hist_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2HIST_FILE
+    if not path.is_file():
+        return dict(_V2HIST_DEFAULTS)
+    return {**_V2HIST_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2hist_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2HIST_TAG], spawn_key=(i,)))
+
+
+def _v2hist_draw_length(rng, buckets) -> int:
+    w = np.asarray([float(b[2]) for b in buckets], dtype=np.float64)
+    lo, hi, _ = buckets[int(rng.choice(len(buckets), p=w / w.sum()))]
+    return int(round(np.exp(rng.uniform(np.log(float(lo)), np.log(float(hi))))))
+
+
+def _v2hist_pad_row(rows: np.ndarray, keep: int) -> np.ndarray:
+    n = rows.shape[1]
+    if keep >= n:
+        return rows
+    out = rows.copy()
+    out[:, : n - keep] = rows[:, n - keep : n - keep + 1]
+    return out
+
+
+def _v2hist_row(x, rng, cfg: dict):
+    if rng.random() >= float(cfg["rate"]):
+        return x
+    keep = _v2hist_draw_length(rng, cfg["history_buckets"])
+    return _v2hist_pad_row(_v2_as_rows(x), keep)
+
+
+def _v2hist_rows(rows, seed: int, cfg: dict) -> Iterator:
+    for i, x in enumerate(rows):
+        yield _v2hist_row(x, _v2hist_rng(seed, i), cfg)
+
+
+# ═══════════════ v2 pool-match families: counts, intermittent, noisy measurements (switchable) ═══════════════
+# Fills the largest gaps the CPU coverage proxy (tools/proxy) finds against the live
+# pool: over half of pool series are integer-valued (synthetic median 0.10), and the
+# pool has many more noisy, low-autocorrelation, high-CV series. Rows are inserted
+# before parent rows on a per-row coin, like the v2 mix layer.
+# Configured by an optional `v2_pool.json` in the config dir.
+_V2POOL_TAG = 0x7A2F0004
+_V2POOL_FILE = "v2_pool.json"
+_V2POOL_DEFAULTS = {
+    "rate": 0.0,
+    "family_weights": {"count_seasonal": 0.35, "intermittent": 0.20,
+                       "noisy_measure": 0.30, "tick_walk": 0.15},
+}
+
+
+def _v2pool_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2POOL_FILE
+    if not path.is_file():
+        return dict(_V2POOL_DEFAULTS)
+    return {**_V2POOL_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2pool_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2POOL_TAG], spawn_key=(i,)))
+
+
+def _v2pool_log_uniform(rng, lo: float, hi: float) -> float:
+    return float(np.exp(rng.uniform(np.log(lo), np.log(hi))))
+
+
+def _v2pool_seasonal_intensity(rng, L: int, periods: tuple) -> np.ndarray:
+    t = np.arange(L, dtype=np.float64)
+    log_s = np.zeros(L)
+    for period in periods:
+        if rng.random() < 0.7:
+            log_s += rng.uniform(0.1, 1.0) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, period)) / 2.0
+    return np.exp(log_s + 0.3 * rng.normal() * _v2mix_trend(rng, t))
+
+
+def _v2pool_count_seasonal(rng, L: int, periods: tuple) -> np.ndarray:
+    lam = _v2pool_log_uniform(rng, 0.5, 2000.0) * _v2pool_seasonal_intensity(rng, L, periods)
+    if rng.random() < 0.5:
+        return rng.poisson(lam).astype(np.float64)
+    r = _v2pool_log_uniform(rng, 0.5, 50.0)
+    return rng.negative_binomial(r, r / (r + lam)).astype(np.float64)
+
+
+def _v2pool_intermittent(rng, L: int, periods: tuple) -> np.ndarray:
+    s = _v2pool_seasonal_intensity(rng, L, periods)
+    p = np.clip(rng.uniform(0.02, 0.5) * s / s.mean(), 0.0, 1.0)
+    size = 1.0 + rng.geometric(1.0 / _v2pool_log_uniform(rng, 1.0, 30.0), L)
+    return (rng.random(L) < p) * size.astype(np.float64)
+
+
+def _v2pool_noisy_measure(rng, L: int, periods: tuple) -> np.ndarray:
+    t = np.arange(L, dtype=np.float64)
+    season = sum(rng.uniform(0.0, 0.6) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, p)) for p in periods)
+    phi = rng.uniform(-0.4, 0.6)
+    ar = _v2mix_lfilter([1.0], [1.0, -phi], rng.standard_normal(L))
+    noise = rng.standard_t(rng.uniform(2.5, 30.0), L)
+    x = season + rng.uniform(0.0, 1.0) * _v2mix_unit(ar) + rng.uniform(0.5, 2.0) * noise
+    scale = _v2pool_log_uniform(rng, 1.0, 1e4)
+    y = scale * rng.uniform(0.5, 4.0) + scale * 0.4 * _v2mix_unit(x)
+    if rng.random() < 0.7:
+        return np.round(np.maximum(y, 0.0))
+    return np.round(y, int(rng.integers(1, 3)))
+
+
+def _v2pool_tick_walk(rng, L: int, periods: tuple) -> np.ndarray:
+    steps = rng.standard_t(rng.uniform(2.5, 10.0), L) * rng.uniform(0.2, 3.0)
+    level = _v2pool_log_uniform(rng, 50.0, 1e5)
+    return np.round(np.maximum(level + np.cumsum(steps + rng.normal(0.0, 0.02)), 0.0))
+
+
+_V2POOL_FAMILIES = {
+    "count_seasonal": _v2pool_count_seasonal,
+    "intermittent": _v2pool_intermittent,
+    "noisy_measure": _v2pool_noisy_measure,
+    "tick_walk": _v2pool_tick_walk,
+}
+
+
+def _v2pool_series(rng, cfg: dict) -> np.ndarray:
+    name = _v2mix_pick_name(rng, cfg["family_weights"])
+    periods = _v2mix_pick_periods(rng)
+    return _V2POOL_FAMILIES[name](rng, _V2_LENGTH, periods)
+
+
+def _v2pool_rows(rows, seed: int, cfg: dict) -> Iterator:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2pool_rng(seed, i)
+        if rng.random() < rate:
+            yield _v2pool_series(rng, cfg)
+        yield x
+
+
+# ═══════════════ v2 pipeline: composes the switchable row stages (outermost) ═══════════════
+# When the pool-match or history-match stage is on, rows flow
+#   king rows -> v2 mix (if on) -> pool-match (if on) -> history match (if on)
+#   -> v2 packer -> group policy (if not "row").
+# With both new stages off it falls through to the existing layers unchanged.
+_V2PipeParent = Generator
+
+
+class Generator(_V2PipeParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2hist_cfg = _v2hist_load_config(config_dir)
+        self._v2pool_cfg = _v2pool_load_config(config_dir)
+        self._v2pipe_seed = int(seed)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2pipe_active(self) -> bool:
+        return float(self._v2hist_cfg["rate"]) > 0.0 or float(self._v2pool_cfg["rate"]) > 0.0
+
+    def generate(self, n_series: int) -> Iterator[dict]:
+        if not self._v2pipe_active():
+            yield from super().generate(n_series)
+            return
+        yield from self._v2pipe_generate(int(n_series))
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = base
+        if float(self._v2mix_cfg["rate"]) > 0.0:
+            rows = _v2mix_rows(rows, self._v2mix_seed, self._v2mix_cfg)
+        if float(self._v2pool_cfg["rate"]) > 0.0:
+            rows = _v2pool_rows(rows, self._v2pipe_seed, self._v2pool_cfg)
+        if float(self._v2hist_cfg["rate"]) > 0.0:
+            rows = _v2hist_rows(rows, self._v2pipe_seed, self._v2hist_cfg)
+        return rows
+
+    def _v2pipe_relabel(self, records) -> Iterator[dict]:
+        if self._v2groups_cfg["policy"] == "row":
+            return records
+        return _v2groups_records(records, self._v2groups_cfg, self._v2groups_seed)
+
+    def _v2pipe_generate(self, n: int) -> Iterator[dict]:
+        if n <= 0:
+            return
+        base = _V2PackParent.generate(self, _v2_parent_budget(n))
+        try:
+            yield from self._v2pipe_relabel(_v2_records(self._v2pipe_rows(base), n))
+        finally:
+            base.close()
