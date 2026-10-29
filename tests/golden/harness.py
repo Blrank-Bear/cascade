@@ -2,7 +2,7 @@
 
 Run before and after every refactor step; the digests must be byte-identical.
 
-    python harness.py GEN_DIR --out digests.json [--n 600] [--seeds 0,1,...] [--mode natural|late]
+    python harness.py GEN_DIR --out digests.json [--n 600] [--seeds 0,1,...] [--mode natural|late] [--cls NAME]
 
 Mode "late" shrinks the module's stream-budget constants so the late-stream
 layers (C91/C124B2 holds, YZ/YC, YQH, C215-LP) fire within a short run.
@@ -48,8 +48,10 @@ def apply_overrides(module, overrides: dict) -> dict:
     return applied
 
 
-def record_values(item):
-    return item["values"] if isinstance(item, dict) else item
+def record_arrays(item) -> list:
+    if isinstance(item, dict):
+        return [np.asarray(item[k]) for k in sorted(item)]
+    return [np.asarray(item)]
 
 
 def update_digest(h, arr: np.ndarray) -> None:
@@ -58,16 +60,17 @@ def update_digest(h, arr: np.ndarray) -> None:
     h.update(arr.tobytes())
 
 
-def digest_seed(module, gen_dir: Path, seed: int, n: int) -> dict:
-    gen = module.Generator(str(gen_dir), seed=seed)
+def digest_seed(module, cls_name: str, gen_dir: Path, seed: int, n: int) -> dict:
+    gen = getattr(module, cls_name)(str(gen_dir), seed=seed)
     h = hashlib.sha256()
     shapes: dict[str, int] = {}
     count = 0
     t0 = time.perf_counter()
     for item in gen.generate(n):
-        arr = np.asarray(record_values(item))
-        update_digest(h, arr)
-        key = "x".join(map(str, arr.shape))
+        arrays = record_arrays(item)
+        for arr in arrays:
+            update_digest(h, arr)
+        key = "x".join(map(str, arrays[-1].shape))
         shapes[key] = shapes.get(key, 0) + 1
         count += 1
         if count >= n:
@@ -83,15 +86,16 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=600)
     ap.add_argument("--seeds", default=",".join(map(str, DEFAULT_SEEDS)))
     ap.add_argument("--mode", choices=("natural", "late"), default="natural")
+    ap.add_argument("--cls", default="Generator", help="Module attribute to instantiate.")
     args = ap.parse_args()
 
     gen_dir = args.gen_dir.resolve()
     module = load_module(gen_dir)
     applied = apply_overrides(module, LATE_OVERRIDES) if args.mode == "late" else {}
     seeds = [int(s) for s in args.seeds.split(",")]
-    result = {"mode": args.mode, "n": args.n, "overrides": applied, "seeds": {}}
+    result = {"mode": args.mode, "cls": args.cls, "n": args.n, "overrides": applied, "seeds": {}}
     for seed in seeds:
-        result["seeds"][str(seed)] = digest_seed(module, gen_dir, seed, args.n)
+        result["seeds"][str(seed)] = digest_seed(module, args.cls, gen_dir, seed, args.n)
         print(seed, result["seeds"][str(seed)], flush=True)
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
 

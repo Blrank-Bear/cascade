@@ -1,0 +1,60 @@
+{
+  "cls": "Generator",
+  "mode": "late",
+  "n": 200,
+  "overrides": {
+    "_C215LP_STREAM_POINTS": 1000000,
+    "_C91_CHILD_BUDGET": 200000,
+    "_YZ_CHILD_BUDGET": 200000
+  },
+  "seeds": {
+    "0": {
+      "count": 200,
+      "seconds": 39.01,
+      "sha256": "d51f7d9b6af7c392525c7d3dc8a0dedaca7bceeecc9bee87d3487339801ea68b",
+      "shapes": {
+        "32x4096": 200
+      }
+    },
+    "1": {
+      "count": 200,
+      "seconds": 14.17,
+      "sha256": "a09e220b1998d3fe52de6cb3720f3929bf879f9920520150cc4607ef3c329b73",
+      "shapes": {
+        "32x4096": 200
+      }
+    },
+    "12345": {
+      "count": 200,
+      "seconds": 12.59,
+      "sha256": "50dd14555ce4c5c7721397ad8bb6b3e98e203737e24ee856d7b24b9701d41817",
+      "shapes": {
+        "32x4096": 200
+      }
+    },
+    "4294967303": {
+      "count": 200,
+      "seconds": 12.63,
+      "sha256": "426a687db8a6d06ec1fe4844d85885ca87221d5d63aa99f3f6954237b1b07d5e",
+      "shapes": {
+        "32x4096": 200
+      }
+    },
+    "4611686018427487895": {
+      "count": 200,
+      "seconds": 12.82,
+      "sha256": "19a52ffa819f11d172ff396dddb605c96ddc9badb5125092072e6f3c66c57e65",
+      "shapes": {
+        "32x4096": 200
+      }
+    },
+    "9223372036854775807": {
+      "count": 200,
+      "seconds": 13.66,
+      "sha256": "f6a203764c5b785f40d68046731ee5d3f0451781ed52e8b542eec688ae658800",
+      "shapes": {
+        "32x4096": 200
+      }
+    }
+  }
+}

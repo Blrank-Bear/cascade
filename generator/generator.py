@@ -11616,7 +11616,7 @@ class _EngineGenerator(DataGenerator):
             if novel_iter is not None:
                 novel_iter.close()
 
-_PRODUCER_WORKERS = 3
+_PRODUCER_WORKERS = 1  # v2 child: one core; >1 only adds threads and memory arenas
 _H413_PARENT_GENERATOR = _EngineGenerator
 
 class _EngineGenerator(_H413_PARENT_GENERATOR):
@@ -18737,7 +18737,7 @@ class Generator(_S2Parent):
         finally:
             base.close()
 
-_C91_CHILD_BUDGET = 13_320_000_000
+_C91_CHILD_BUDGET = 1_562_500_000  # v2 child: 50e9 points / 32 children
 _C91_OPEN_NUM, _C91_OPEN_DEN = 3, 5
 _C91_P = 0.9
 _C91_MIN_RUN = 32
@@ -27508,7 +27508,7 @@ _YZ_FAMS = (("yairq", "_ya_airq"), ("ygrid15", "_yb_grid15"), ("ymin1440", "_yc_
             ("ytransport", "_yq_transport"),
             ("ygrid15v2", "_yu_grid15v2"))
 
-_YZ_CHILD_BUDGET = 13_320_000_000
+_YZ_CHILD_BUDGET = 1_562_500_000  # v2 child: 50e9 points / 32 children
 
 def _yz_points(x) -> int:
     try:
@@ -30881,7 +30881,7 @@ _C215LP_BACK_LO = 256
 _C215LP_QEXT = False
 _C215LP_LATE_FRAC = 0.6
 _C215LP_LATE_H2E = 0
-_C215LP_STREAM_POINTS = 39960000000 // 3
+_C215LP_STREAM_POINTS = 1_562_500_000  # v2 child: 50e9 points / 32 children
 
 
 def _c215lp_quiet(pre):
@@ -31313,3 +31313,203 @@ class Generator(_C234SParent):
     @property
     def name(self) -> str:
         return 'c268-k76-BIG1-P40U-S2'
+
+
+# ═══════════════ v2 pack: every yield is one (32, L) record with per-row groups ═══════════════
+# The parent stream yields (L,) or (C<=5, L) rows. Rows are packed in stream order into
+# 32-channel records; each parent row keeps its own group label, so channels from
+# different rows never attend to each other. Labels are canonical (0, 1, 2, ... by first
+# appearance). Values are made finite and float32-safe. A row that would put two channels
+# of one record above _V2_MAX_CORR |Pearson| (the trainer's near-duplicate gate, same
+# formula) is skipped, so a record can never trip that gate if it is ever enforced.
+_V2_CHANNELS = 32
+_V2_LENGTH = 4096
+_V2_LOOKAHEAD = 64
+_V2_ABS_LIMIT = 1e30
+_V2_MAX_CORR = 0.998
+_V2_STD_EPS = 1e-12
+_V2PackParent = Generator
+
+from collections import deque as _deque
+
+
+def _v2_parent_budget(n_records: int) -> int:
+    return n_records * _V2_CHANNELS + _V2_LOOKAHEAD
+
+
+def _v2_as_rows(x) -> np.ndarray:
+    v = x["values"] if isinstance(x, dict) else x
+    return np.atleast_2d(np.asarray(v, dtype=np.float64))
+
+
+def _v2_fit_length(row: np.ndarray, length: int) -> np.ndarray:
+    n = row.shape[1]
+    if n == length:
+        return row
+    if n > length:
+        return row[:, n - length:]
+    pad = np.repeat(row[:, :1], length - n, axis=1)
+    return np.concatenate([pad, row], axis=1)
+
+
+def _v2_float32_safe(values: np.ndarray) -> np.ndarray:
+    clean = np.nan_to_num(values, nan=0.0, posinf=_V2_ABS_LIMIT, neginf=-_V2_ABS_LIMIT)
+    return np.clip(clean, -_V2_ABS_LIMIT, _V2_ABS_LIMIT).astype(np.float32)
+
+
+def _v2_standardize(values32: np.ndarray) -> np.ndarray:
+    a = values32.astype(np.float64)
+    centered = a - a.mean(axis=1, keepdims=True)
+    return centered / np.maximum(centered.std(axis=1), _V2_STD_EPS)[:, None]
+
+
+class _V2Row:
+    __slots__ = ("values", "z")
+
+    def __init__(self, values: np.ndarray, z: np.ndarray) -> None:
+        self.values = values
+        self.z = z
+
+    @property
+    def channels(self) -> int:
+        return int(self.values.shape[0])
+
+
+def _v2_make_row(x) -> _V2Row:
+    values = _v2_float32_safe(_v2_fit_length(_v2_as_rows(x), _V2_LENGTH))
+    return _V2Row(values, _v2_standardize(values))
+
+
+def _v2_slice_row(row: _V2Row, n: int) -> tuple[_V2Row, _V2Row]:
+    return _V2Row(row.values[:n], row.z[:n]), _V2Row(row.values[n:], row.z[n:])
+
+
+def _v2_self_redundant(z: np.ndarray) -> bool:
+    if z.shape[0] < 2:
+        return False
+    c = np.abs(z @ z.T) / z.shape[1]
+    np.fill_diagonal(c, 0.0)
+    return bool(c.max() > _V2_MAX_CORR)
+
+
+def _v2_cross_redundant(z: np.ndarray, placed_z: np.ndarray) -> bool:
+    if placed_z.shape[0] == 0:
+        return False
+    return bool((np.abs(z @ placed_z.T) / z.shape[1]).max() > _V2_MAX_CORR)
+
+
+def _v2_redundant(z: np.ndarray, placed_z: np.ndarray) -> bool:
+    return _v2_self_redundant(z) or _v2_cross_redundant(z, placed_z)
+
+
+def _v2_refill(pending, source) -> None:
+    while len(pending) < _V2_LOOKAHEAD:
+        x = next(source, None)
+        if x is None:
+            return
+        pending.append(_v2_make_row(x))
+
+
+def _v2_pop_at(pending, i: int) -> _V2Row:
+    row = pending[i]
+    del pending[i]
+    return row
+
+
+def _v2_find_candidate(pending, free: int, placed_z: np.ndarray) -> int:
+    for i, row in enumerate(pending):
+        if row.channels <= free and not _v2_redundant(row.z, placed_z):
+            return i
+    return -1
+
+
+def _v2_find_fitting(pending, free: int) -> int:
+    for i, row in enumerate(pending):
+        if row.channels <= free:
+            return i
+    return -1
+
+
+def _v2_split_front(pending, free: int) -> _V2Row:
+    head, tail = _v2_slice_row(pending.popleft(), free)
+    pending.appendleft(tail)
+    return head
+
+
+def _v2_next_row(pending, free: int, placed_z: np.ndarray) -> _V2Row | None:
+    """The next row to place, or None after discarding one redundant row (caller retries)."""
+    i = _v2_find_candidate(pending, free, placed_z)
+    if i >= 0:
+        return _v2_pop_at(pending, i)
+    j = _v2_find_fitting(pending, free)
+    if j >= 0:
+        _v2_pop_at(pending, j)
+        return None
+    head = _v2_split_front(pending, free)
+    return None if _v2_redundant(head.z, placed_z) else head
+
+
+class _V2Record:
+    def __init__(self) -> None:
+        self.values = np.empty((_V2_CHANNELS, _V2_LENGTH), dtype=np.float32)
+        self.z = np.empty((_V2_CHANNELS, _V2_LENGTH), dtype=np.float64)
+        self.groups = np.empty(_V2_CHANNELS, dtype=np.int64)
+        self.at = 0
+        self.label = 0
+
+    def free(self) -> int:
+        return _V2_CHANNELS - self.at
+
+    def full(self) -> bool:
+        return self.at >= _V2_CHANNELS
+
+    def placed_z(self) -> np.ndarray:
+        return self.z[:self.at]
+
+    def place(self, row: _V2Row) -> None:
+        end = self.at + row.channels
+        self.values[self.at:end] = row.values
+        self.z[self.at:end] = row.z
+        self.groups[self.at:end] = self.label
+        self.at = end
+        self.label += 1
+
+    def as_dict(self) -> dict:
+        return {"values": self.values, "groups": self.groups}
+
+
+def _v2_pack_record(pending, source) -> dict | None:
+    record = _V2Record()
+    while not record.full():
+        _v2_refill(pending, source)
+        if not pending:
+            return None
+        row = _v2_next_row(pending, record.free(), record.placed_z())
+        if row is not None:
+            record.place(row)
+    return record.as_dict()
+
+
+def _v2_records(base, n: int) -> Iterator[dict]:
+    pending = _deque()
+    for _ in range(n):
+        record = _v2_pack_record(pending, base)
+        if record is None:
+            return
+        yield record
+
+
+class Generator(_V2PackParent):
+    def generate(self, n_series: int) -> Iterator[dict]:
+        n = int(n_series)
+        if n <= 0:
+            return
+        base = super().generate(_v2_parent_budget(n))
+        try:
+            yield from _v2_records(base, n)
+        finally:
+            base.close()
+
+    @property
+    def name(self) -> str:
+        return super().name + "-v2pack"
