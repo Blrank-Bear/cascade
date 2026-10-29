@@ -18,3 +18,9 @@
 - Own miner/generator code lives in this repo, outside `upstream/`.
 - `reference/kings/` — exported king generators (study only; never run outside a sandbox, never copy into a submission).
 - `notes/` — analysis notes.
+
+# Refactoring rules
+
+- When refactoring, break every function down so each one performs a single, atomic unit of functionality.
+- More code and more functions is accepted; the goal is that each bug fix or performance change maps to exactly one small function.
+- Refactors must preserve behavior (verify with golden-output / digest tests before and after).
