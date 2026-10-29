@@ -82,7 +82,8 @@ Settlements are 900 blocks apart (~3 h), with 4 per era (~12 h).
 ## 6. Champion lineage (`champions/`)
 
 - There are 17 reigns, all **pre-v2**: Toto2, 1-D yields, with stacked 2–4 channel rows from reign 16 on. **None is v2-legal.**
-- The current king is `champions/king` = `16-5GMz…` ("c159"): 995 KB and ~21k lines.
+- **Correction:** the `cascade-v2` branch's `champions/king` is stale (6 Oct, `bc25aa43…`). Per `main`'s 27 Oct sync, the current king is `04e22672…` (31k lines). There were 4 dethronements after 6 Oct, and all 5 snapshots are in `reference/kings/`, which are also pre-v2.
+- The design described below is `bc25aa43…` = `16-5GMz…` ("c159"): 995 KB and ~21k lines.
   - Its engine has ~91 univariate families: held_rate .466, conditional_stability .110, step_level .034, sticky_station, gauge_rain, econ staircases, tides, energy and more.
   - It adds an observation layer (censoring, spikes, time warp, hold blocks, tsmixup).
   - On top of that is a chain of 8 wrapper stages adding partner channels (teach streams fitted to pool feeds, micro-price/volume pairs, civic/energy channels).
