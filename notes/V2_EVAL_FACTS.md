@@ -294,3 +294,18 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
   - jdr60 vs j100sz1 per seed: −0.0021 / −0.0027 / −0.0020 / −0.0005.
   - **The gain comes from more hold content, not transport** (transport WQL got worse). Other-window MASE rises.
   - The proxy may over-reward holds, so jdr60 is queued as a GPU arm in grid 2.
+
+## First GPU confirmation, grid 2 (2026-10-30)
+- **Setup:**
+  - Model: 28m preset, `--hours 0.1` (≈ 795 steps), 2 micro-batches, `fast_moe` patch (bitwise identical).
+  - Numerics guard on.
+  - Scoring: 3 pools × 2 round seeds, 2,000 windows, margin 0.01.
+
+| Arm | Wins | Mean gain vs base | Per-cell gain | Horizons |
+|---|---|---|---|---|
+| **j100sz05** (rate 1.0, 24 shifts, outliers 0.25, size 0.5–5) | **6/6** | **+2.69%** | +2.02 … +3.48% (LCB +0.0136 … +0.0280) | all positive: h64 +2.6…5.2%, h256 +1.6…3.1%, h720 +1.0…2.4% |
+| j100sz1 (size 1–10) | 5/6 | +2.30% | +1.53 … +3.21% | all positive |
+
+- **j100sz05 passes the promotion rule** (≥ 5/6 cells, same sign at every horizon).
+- **The GPU prefers smaller shifts,** consistent with sz05's lower other-window cost on the proxy.
+- **Replace sweep on CPU** (vs j100sz1): rate 0.8 +0.0021, rate 1.0 +0.0011, cut 0.1 −0.0005. jdr60's −0.0018 looks like noise (non-monotone), so replace mode stays off. jdr60 is still on the GPU queue as a check.
