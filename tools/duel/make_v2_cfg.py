@@ -55,6 +55,29 @@ def build(upstream_text: str, sets: dict[str, str]) -> str:
     return "".join(head + lines[:start + 1] + body + lines[end:])
 
 
+# --- [round] size retarget: screen_size / throne_sizes must name the v2 preset ---
+ROUND_SIZE_KEYS = ("screen_size", "throne_sizes")
+
+
+def round_size_line(key: str, preset: str) -> str:
+    return f'{key} = ["{preset}"]\n' if key == "throne_sizes" else f'{key} = "{preset}"\n'
+
+
+def retarget_round_sizes(text: str, preset: str) -> str:
+    lines = text.splitlines(keepends=True)
+    start, end = section_spans(lines)["round"]
+    for i in range(start + 1, end):
+        key = lines[i].split("=", 1)[0].strip() if "=" in lines[i] else None
+        if key in ROUND_SIZE_KEYS:
+            lines[i] = round_size_line(key, preset)
+    return "".join(lines)
+
+
+def build_v2(upstream_text: str, sets: dict[str, str]) -> str:
+    text = build(upstream_text, sets)
+    return retarget_round_sizes(text, tomllib.loads(text)["training"]["arch_preset"])
+
+
 def parse_sets(items: list[str]) -> dict[str, str]:
     sets = dict(DEFAULT_SETS)
     for item in items:
@@ -69,12 +92,14 @@ def main() -> None:
     ap.add_argument("out", type=Path)
     ap.add_argument("--set", action="append", default=[])
     args = ap.parse_args()
-    text = build(args.upstream.read_text(), parse_sets(args.set))
+    text = build_v2(args.upstream.read_text(), parse_sets(args.set))
     v2 = tomllib.loads(args.upstream.read_text())["v2"]["training"]
     got = tomllib.loads(text)["training"]
     diff = {k: (v2.get(k), got.get(k)) for k in set(v2) | set(got) if v2.get(k) != got.get(k)}
     args.out.write_text(text)
-    print(f"wrote {args.out}; preset={got['arch_preset']} steps={got.get('training_steps')} diff_vs_v2={diff}")
+    rnd = tomllib.loads(text)["round"]
+    print(f"wrote {args.out}; preset={got['arch_preset']} steps={got.get('training_steps')} diff_vs_v2={diff} "
+          f"round={[rnd.get(k) for k in ROUND_SIZE_KEYS]}")
 
 
 if __name__ == "__main__":
