@@ -398,3 +398,22 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **The effect:** base trained only 115–117 steps vs 123–134 for the jumps arms (~10–15% more). Part of the measured +2.3…3.9% may be extra training. Grids 2, 2s1 and 2c are **confounded**.
 - **Fix:** `chain.v2-28m-mb2-steps.toml` sets `[round] heat_guard_factor = 30`, so the step budget binds. `--hours 0.05` gives 397 steps per arm (~56 min each).
 - **Re-run:** `grid_gpu4` (seed 0) and `grid_gpu4s1` (seed 1) with base, j100sz05, jsz025, jsz05dr60, jsz05sing, jcombo. Check `n_series/16` is equal across arms.
+
+## Equal-steps GPU result (grid 4, seed 0, 396 steps every arm): the jumps gain was mostly the confound
+
+| Arm | Wins | Mean vs base | h64 | h256 / h720 |
+|---|---|---|---|---|
+| **jsz05dr60** (sz05 + dock replace 0.6) | 0/6 | **+0.75%** (LCB −0.003 … +0.005) | +1.0…3.0% | ≈ 0 |
+| jsz025 | 0/6 | +0.20% | +0.8…1.9% | slightly negative |
+| j100sz05 | 0/6 | −0.28% | +0.2…1.3% | −0.5…−1.5% |
+| jsz05sing | 0/6 | **−0.98%** | mixed | negative |
+| jcombo | 0/6 | **−0.93%** | mixed | negative |
+
+- **The earlier +2.3…3.9% (grids 2/2s1/2c) came mostly from the extra training steps** the jumps arms got under the 900 s wall clock.
+- **At equal steps:**
+  - jumps help h=64 (holds) but hurt h=256/720; net ≈ 0;
+  - dock replace 0.6 is the only mildly positive change;
+  - singleton groups are harmful.
+- **None meets the 1% LCB bar.** No current variant is a submittable improvement over the king's code.
+- **The CPU proxy (h=64 only) over-rewarded hold precision.** Its h=256 run did agree that the gains shrink with horizon.
+- **Next seed-1 grid** (`grid_gpu4s1`): base, jsz05dr60 (replication), dr60only, j30sz05dr60, jsz025dr60.
