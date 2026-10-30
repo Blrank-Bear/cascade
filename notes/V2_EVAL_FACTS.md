@@ -283,3 +283,14 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **Transport improves:** with j100sz1, dock 10% takes transport to +0.001 / +0.029; econ_fin, nature and 1-min data improve too.
 - **Overall it is worse:** 0.2533 (10%) and 0.2536 (5%) vs 0.2500. Hold MASE 1.2e-4 vs 8.6e-5; other MASE 0.836 vs 0.834.
 - **Likely reason:** inserted rows displace hold-rich king rows from the fixed record budget. Kept off.
+- **Replace mode** (`replace_rate`, which swaps dynamic king rows with hold share < 0.2):
+
+| Arm | Score | Hold MASE | Other MASE |
+|---|---|---|---|
+| j100sz1 + replace 0.6 (jdr60) | **0.2481** | 5.5e-5 | 0.839 |
+| j100sz1 + replace 0.3 | 0.2506 | — | — |
+| j100sz1 | 0.2500 | 8.6e-5 | 0.834 |
+
+  - jdr60 vs j100sz1 per seed: −0.0021 / −0.0027 / −0.0020 / −0.0005.
+  - **The gain comes from more hold content, not transport** (transport WQL got worse). Other-window MASE rises.
+  - The proxy may over-reward holds, so jdr60 is queued as a GPU arm in grid 2.
