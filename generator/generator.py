@@ -32719,3 +32719,56 @@ class Generator(_V2DockParent):
         if self._v2dock_on():
             rows = _v2dock_rows(rows, self._v2pipe_seed, self._v2dock_cfg)
         return rows
+
+
+# ── v2 dock occupancy, replace mode: swap dynamic king rows instead of inserting ──
+# Inserting dock rows displaces hold-rich king rows from the fixed record budget and
+# costs hold precision. With `replace_rate` > 0 (key in `v2_dock.json`), a king row
+# whose channels are mostly moving (exact-hold share of steps below `dynamic_hold_max`)
+# is replaced by a dock/traffic row with that probability; hold-rich rows are kept.
+_V2DOCKR_TAG = 0x7A2F000C
+_V2DOCKR_DEFAULTS = {"replace_rate": 0.0, "dynamic_hold_max": 0.2}
+
+
+def _v2dockr_cfg(dock_cfg: dict) -> dict:
+    return {**_V2DOCKR_DEFAULTS, **{k: dock_cfg[k] for k in _V2DOCKR_DEFAULTS if k in dock_cfg}}
+
+
+def _v2dockr_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2DOCKR_TAG], spawn_key=(i,)))
+
+
+def _v2dockr_hold_share(x) -> float:
+    rows = _v2_as_rows(x)
+    if rows.shape[-1] < 2:
+        return 1.0
+    return float(np.mean(np.diff(rows, axis=-1) == 0))
+
+
+def _v2dockr_rows(rows, seed: int, dock_cfg: dict) -> Iterator:
+    cfg = _v2dockr_cfg(dock_cfg)
+    rate, cut = float(cfg["replace_rate"]), float(cfg["dynamic_hold_max"])
+    for i, x in enumerate(rows):
+        rng = _v2dockr_rng(seed, i)
+        if rng.random() < rate and _v2dockr_hold_share(x) < cut:
+            yield _v2dock_series(rng, dock_cfg, int(_v2_as_rows(x).shape[-1]))
+        else:
+            yield x
+
+
+_V2DockReplaceParent = Generator
+
+
+class Generator(_V2DockReplaceParent):
+    def _v2dockr_on(self) -> bool:
+        return float(_v2dockr_cfg(self._v2dock_cfg)["replace_rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2dockr_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2dockr_on():
+            rows = _v2dockr_rows(rows, self._v2pipe_seed, self._v2dock_cfg)
+        return rows
