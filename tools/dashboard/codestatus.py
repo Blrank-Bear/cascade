@@ -19,7 +19,8 @@ COMMITS_SHOWN = 15
 
 
 def git(repo: Path, *args: str, timeout: float = 60) -> str:
-    cmd = ["git", "-c", f"safe.directory={repo}", "-C", str(repo), *args]
+    # --no-optional-locks: a dashboard poll must never take index.lock from real commits
+    cmd = ["git", "--no-optional-locks", "-c", f"safe.directory={repo}", "-C", str(repo), *args]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
 
 
