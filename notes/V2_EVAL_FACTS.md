@@ -63,3 +63,14 @@ These are hypotheses. The proxy only says the corpus looks more like the pool; G
   - mix {0, 0.3};
   - groups {row, singleton};
   - start with the 4 single-factor arms plus base.
+
+## Pool-match v2 and flat-channel replacement (2026-10-29)
+- **`v2_pool2.json` (rate 0.25):** persistent latent signal with heavy-tailed noise, outliers and rounding. Per-family medians now bracket the pool (acf1 0.83–0.97 for the signal families vs. 0.92 in the pool). Proxy AUC 0.922.
+- **Flat channels:**
+  - In king rows, 26% of channels are exactly constant over their last 512 points, and 52% of rows contain one (first 3,000 rows, seed 0).
+  - Eval contexts end in a constant 512-point run only 1.7% of the time (64-point run: 5.5%).
+- **`v2_flat.json` `{"enabled": true}`:** replaces flat king channels with pool2 series, keeping each one with `keep_prob` 0.07, which is about the eval rate. Proxy AUC **0.918**, the best single stage.
+- **Interaction:** with flat on, flat channels no longer count as short histories, so the history rate must rise to about **0.75**.
+  - flat + pool2 0.25 + history 0.75 gives a history median of 1,613 vs. eval's 1,643, with all buckets within about 3 points.
+  - It passes validation, and golden is unchanged.
+- **Stage-B arms** (`tools/duel/arms_stage_b.json`): base, hist55, pool2_25, flat, mix30, singleton, flat_pool2_hist75.

@@ -32137,3 +32137,92 @@ class Generator(_V2Pool2Parent):
         if self._v2pool2_on():
             base = _v2pool2_rows(base, self._v2pipe_seed, self._v2pool2_cfg)
         return super()._v2pipe_rows(base)
+
+
+
+# ═══════════════ v2 flat-channel replacement (switchable) ═══════════════
+# About 12% of king channels are exactly constant over pool-length tails; the eval
+# pool builder drops such series (min_std), and a constant context teaches nothing
+# about the forecasts that are scored. A king channel whose last `tail` values are
+# constant (std <= `rel_std` * (1 + |mean|)) is dropped from its row and replaced by
+# a v2 pool-match (version 2) series of its own, so the row count stays the same.
+# A flat channel survives with probability `keep_prob` (default 0.07): eval contexts
+# end in a constant 512-step run 1.7% of the time vs. 26% of king channels, so the
+# default keeps about the eval rate. Applies to king rows only, before every other stage.
+# Configured by an optional `v2_flat.json` in the config dir.
+_V2FLAT_TAG = 0x7A2F0006
+_V2FLAT_FILE = "v2_flat.json"
+_V2FLAT_DEFAULTS = {
+    "enabled": False,
+    "tail": 512,
+    "rel_std": 1e-8,
+    "keep_prob": 0.07,
+    "family_weights": dict(_V2POOL2_DEFAULTS["family_weights"]),
+}
+
+
+def _v2flat_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2FLAT_FILE
+    if not path.is_file():
+        return dict(_V2FLAT_DEFAULTS)
+    return {**_V2FLAT_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2flat_rng(seed: int, i: int, j: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2FLAT_TAG], spawn_key=(i, j)))
+
+
+def _v2flat_channel_flat(ch: np.ndarray, tail: int, rel_std: float) -> bool:
+    t = ch[-tail:]
+    finite = t[np.isfinite(t)]
+    if finite.size == 0:
+        return True
+    return bool(finite.std() <= rel_std * (1.0 + abs(float(finite.mean()))))
+
+
+def _v2flat_mask(rows: np.ndarray, cfg: dict) -> np.ndarray:
+    tail, rel_std = int(cfg["tail"]), float(cfg["rel_std"])
+    return np.asarray([_v2flat_channel_flat(ch, tail, rel_std) for ch in rows], dtype=bool)
+
+
+def _v2flat_keep_some(flat: np.ndarray, seed: int, i: int, keep_prob: float) -> np.ndarray:
+    rng = _v2flat_rng(seed, i, 1 << 20)
+    return flat & (rng.random(flat.size) >= keep_prob)
+
+
+def _v2flat_replacements(seed: int, i: int, n: int, cfg: dict) -> Iterator[np.ndarray]:
+    for j in range(n):
+        yield _v2pool2_series(_v2flat_rng(seed, i, j), cfg)
+
+
+def _v2flat_rows(rows, seed: int, cfg: dict) -> Iterator:
+    for i, x in enumerate(rows):
+        arr = _v2_as_rows(x)
+        flat = _v2flat_keep_some(_v2flat_mask(arr, cfg), seed, i, float(cfg["keep_prob"]))
+        if not flat.any():
+            yield x
+            continue
+        if not flat.all():
+            yield arr[~flat]
+        yield from _v2flat_replacements(seed, i, int(flat.sum()), cfg)
+
+
+_V2FlatParent = Generator
+
+
+class Generator(_V2FlatParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2flat_cfg = _v2flat_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2flat_on(self) -> bool:
+        return bool(self._v2flat_cfg["enabled"])
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2flat_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        if self._v2flat_on():
+            base = _v2flat_rows(base, self._v2pipe_seed, self._v2flat_cfg)
+        return super()._v2pipe_rows(base)
