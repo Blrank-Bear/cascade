@@ -149,3 +149,13 @@ These are hypotheses. The proxy only says the corpus looks more like the pool; G
 - **Long flat tails drive hold precision.** Every trim of them worsens hold MASE roughly in proportion to how much flat content it removes. The small gain on other windows (≈0.001) doesn't pay for it.
 - **Why jumps 0.3 works:** it adds mid-length hold runs and raises P(hold | run 4–64) from 0.14/0.46 to 0.19/0.53, so the corpus becomes more confident about holds, not less.
 - **Next lever:** more exact holds inside dynamic channels (the `v2_holds` stage), not fewer flat tails.
+
+## Stale-holds stage `v2_holds.json` is neutral (2026-10-30)
+- **The stage:** exact sample-and-hold spans (4–512 points, ≤4 per 4096) in dynamic channels. Off by default; goldens unchanged.
+- **Proxy, 4 seeds:**
+  - holds 0.3: **0.2644**, holds 0.6: **0.2645** (base 0.2641);
+  - jumps 0.3 + holds 0.3: **0.2616** (jumps 0.3 alone: 0.2613);
+  - all within noise.
+- **Why:** spans inside moving channels barely change the trailing-run profile of contexts (the holds table matches base to ±0.002).
+- **What jumps 0.3 changes instead:** windows move from the 1024+ run bucket (0.252 → 0.213) into 64–256 (0.050 → 0.073). Level changes inside long flat (step-like) channels are what move the metric.
+- **Follow-up:** jumps variants (rate 0.5, max_shifts 12, outliers off).
