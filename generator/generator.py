@@ -32407,3 +32407,87 @@ class Generator(_V2JumpsParent):
         if self._v2jumps_on():
             base = _v2jumps_rows(base, self._v2pipe_seed, self._v2jumps_cfg)
         return super()._v2pipe_rows(base)
+
+
+# ── v2 stale holds: exact sample-and-hold spans in dynamic channels ─────────
+# On a `rate` fraction of king rows, each non-constant channel (with probability
+# `channel_prob`) gets a Poisson number of spans (mean log-uniform up to `max_spans`
+# per 4096 points) where the value is frozen at its last reading for a log-uniform
+# length in [min_len, max_len] — stale sensors and reporting gaps, which make up the
+# exact-hold windows of the eval pool. Runs first in the stage chain (before jumps,
+# quantization and the flat stage), so quantization keeps the holds exact.
+# Configured by an optional `v2_holds.json` in the config dir.
+_V2HOLDS_TAG = 0x7A2F000A
+_V2HOLDS_FILE = "v2_holds.json"
+_V2HOLDS_DEFAULTS = {"rate": 0.0, "channel_prob": 0.5, "max_spans": 4.0,
+                     "min_len": 4.0, "max_len": 512.0}
+
+
+def _v2holds_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2HOLDS_FILE
+    if not path.is_file():
+        return dict(_V2HOLDS_DEFAULTS)
+    return {**_V2HOLDS_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2holds_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2HOLDS_TAG], spawn_key=(i,)))
+
+
+def _v2holds_count(rng, L: int, max_spans: float) -> int:
+    return int(rng.poisson(_v2pool_log_uniform(rng, 0.25, max_spans) * L / _V2_LENGTH))
+
+
+def _v2holds_span(rng, L: int, cfg: dict) -> tuple[int, int]:
+    length = int(round(_v2pool_log_uniform(rng, float(cfg["min_len"]), float(cfg["max_len"]))))
+    length = max(2, min(length, L - 1))
+    start = int(rng.integers(1, L - length + 1))
+    return start, start + length
+
+
+def _v2holds_freeze(y: np.ndarray, start: int, stop: int) -> None:
+    y[start:stop] = y[start - 1]
+
+
+def _v2holds_channel(ch: np.ndarray, rng, cfg: dict) -> np.ndarray:
+    if rng.random() >= float(cfg["channel_prob"]):
+        return ch
+    if ch.size < 8 or not np.all(np.isfinite(ch)) or float(np.ptp(ch)) == 0.0:
+        return ch
+    y = np.array(ch, dtype=np.float64, copy=True)
+    for _ in range(_v2holds_count(rng, y.size, float(cfg["max_spans"]))):
+        _v2holds_freeze(y, *_v2holds_span(rng, y.size, cfg))
+    return y
+
+
+def _v2holds_row(x, rng, cfg: dict):
+    if rng.random() >= float(cfg["rate"]):
+        return x
+    rows = _v2_as_rows(x)
+    return np.stack([_v2holds_channel(ch, rng, cfg) for ch in rows])
+
+
+def _v2holds_rows(rows, seed: int, cfg: dict) -> Iterator:
+    for i, x in enumerate(rows):
+        yield _v2holds_row(x, _v2holds_rng(seed, i), cfg)
+
+
+_V2HoldsParent = Generator
+
+
+class Generator(_V2HoldsParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2holds_cfg = _v2holds_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2holds_on(self) -> bool:
+        return float(self._v2holds_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2holds_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        if self._v2holds_on():
+            base = _v2holds_rows(base, self._v2pipe_seed, self._v2holds_cfg)
+        return super()._v2pipe_rows(base)
