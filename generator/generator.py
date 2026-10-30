@@ -32226,3 +32226,89 @@ class Generator(_V2FlatParent):
         if self._v2flat_on():
             base = _v2flat_rows(base, self._v2pipe_seed, self._v2flat_cfg)
         return super()._v2pipe_rows(base)
+
+
+
+# ═══════════════ v2 reporting-resolution quantization of king channels (switchable) ═══════════════
+# With the flat stage on, the largest remaining proxy gaps vs. the pool are too few
+# repeated values / partial flat runs (pool median 11.6% zero diffs vs. 4.4%) and
+# too-Gaussian diffs (pool diff kurtosis and spikes are higher). Real feeds report on a
+# coarse tick, which produces exactly those. With probability `rate` per king row,
+# each channel is rounded to a "nice" tick (1, 2 or 5 x 10^k) near `rel_res` times its
+# median absolute step (log-uniform in [rel_res_min, rel_res_max]). Channels that are
+# already integer-valued or have no steps are left alone. Applies to king rows only,
+# before the flat stage. Configured by an optional `v2_quant.json` in the config dir.
+_V2QUANT_TAG = 0x7A2F0007
+_V2QUANT_FILE = "v2_quant.json"
+_V2QUANT_DEFAULTS = {"rate": 0.0, "rel_res_min": 0.2, "rel_res_max": 3.0}
+
+
+def _v2quant_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2QUANT_FILE
+    if not path.is_file():
+        return dict(_V2QUANT_DEFAULTS)
+    return {**_V2QUANT_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2quant_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2QUANT_TAG], spawn_key=(i,)))
+
+
+def _v2quant_nice_tick(q: float) -> float:
+    exponent = np.floor(np.log10(q))
+    base = 10.0 ** exponent
+    mantissa = min((1.0, 2.0, 5.0, 10.0), key=lambda m: abs(np.log(q / (m * base))))
+    return float(mantissa * base)
+
+
+def _v2quant_typical_step(ch: np.ndarray) -> float:
+    d = np.abs(np.diff(ch[np.isfinite(ch)]))
+    d = d[d > 0]
+    return float(np.median(d)) if d.size else 0.0
+
+
+def _v2quant_is_integer(ch: np.ndarray) -> bool:
+    finite = ch[np.isfinite(ch)]
+    return bool(finite.size and np.all(finite == np.round(finite)))
+
+
+def _v2quant_channel(ch: np.ndarray, rng, cfg: dict) -> np.ndarray:
+    step = _v2quant_typical_step(ch)
+    if step <= 0.0 or _v2quant_is_integer(ch):
+        return ch
+    rel = _v2pool_log_uniform(rng, float(cfg["rel_res_min"]), float(cfg["rel_res_max"]))
+    tick = _v2quant_nice_tick(step * rel)
+    return np.round(ch / tick) * tick
+
+
+def _v2quant_row(x, rng, cfg: dict):
+    if rng.random() >= float(cfg["rate"]):
+        return x
+    rows = _v2_as_rows(x)
+    return np.stack([_v2quant_channel(ch, rng, cfg) for ch in rows])
+
+
+def _v2quant_rows(rows, seed: int, cfg: dict) -> Iterator:
+    for i, x in enumerate(rows):
+        yield _v2quant_row(x, _v2quant_rng(seed, i), cfg)
+
+
+_V2QuantParent = Generator
+
+
+class Generator(_V2QuantParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2quant_cfg = _v2quant_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2quant_on(self) -> bool:
+        return float(self._v2quant_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2quant_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        if self._v2quant_on():
+            base = _v2quant_rows(base, self._v2pipe_seed, self._v2quant_cfg)
+        return super()._v2pipe_rows(base)

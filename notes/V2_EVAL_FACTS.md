@@ -74,3 +74,11 @@ These are hypotheses. The proxy only says the corpus looks more like the pool; G
   - flat + pool2 0.25 + history 0.75 gives a history median of 1,613 vs. eval's 1,643, with all buckets within about 3 points.
   - It passes validation, and golden is unchanged.
 - **Stage-B arms** (`tools/duel/arms_stage_b.json`): base, hist55, pool2_25, flat, mix30, singleton, flat_pool2_hist75.
+
+## Reporting-resolution quantization (2026-10-29)
+- **Whole-series integer share:** pool 52.5% all-integer; base 44.0%; flat + pool2 + history 0.75 reaches 50.8%. A separate integerization stage is not needed.
+- **`v2_quant.json` `{"rate": r}`:** rounds king channels to a nice tick (1/2/5 × 10^k) between 0.2× and 3× their median step.
+  - With flat on and rate 0.6, KS drops for unique ratio (0.160 → 0.037), flat_frac (0.134 → 0.064) and int_frac (0.111 → 0.062), and the pool medians are matched.
+  - AUC barely moves (0.918 → 0.917), because the classifier relies on diff kurtosis and spikes.
+  - Rate 0.6 slightly overshoots flat_frac, so **0.5** is recommended.
+- **Remaining largest gaps:** diff kurtosis and spikes are too low (the pool has jumps and outliers), the corpus is too periodic (seasonal_acf), and spectral entropy is too low.
