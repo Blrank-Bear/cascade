@@ -209,3 +209,16 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
   - `route_bias` should rebalance it, after which the batched `bmm` path applies.
 - **Upstream code:** validators run the same code; we do not patch it.
 - **Open question:** what the steady-state step time is. A 30-min run with a per-step heartbeat (`.claude-work/tmp/step_clock.py`, which wraps `combine_gradients`) is measuring it.
+
+### Round 4 (rate)
+
+| Arm (max_shifts 24, max_outliers 0.25) | Mean d vs base | t | Hold MASE | Other MASE |
+|---|---|---|---|---|
+| rate 1.0 (j100s24no) | **−0.0112** | **−16.3** | 1.02e-4 | 0.838 |
+| rate 0.85 | −0.0104 | −9.3 | 1.24e-4 | 0.837 |
+| rate 0.7 | −0.0083 | −12.0 | 1.51e-4 | 0.837 |
+| rate 0.7, max_shifts 36 | −0.0082 | −7.6 | 1.46e-4 | 0.837 |
+
+- **The gain is monotone in rate up to 1.0,** i.e. every king row gets shifts.
+- **Other-window MASE creeps up** (0.831 → 0.838). Watch for over-fitting to holds; this needs GPU confirmation.
+- **Round 5:** shift size (1–10 and 10–100 median steps) and max_shifts 12, at rate 1.0.
