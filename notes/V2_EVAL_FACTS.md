@@ -341,3 +341,15 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
   - j100sz1 −0.0083, jdr60 −0.0074, j100sz05 −0.0055, jsz025 −0.0034.
   - Every jumps arm beats base, but the ranking is the reverse of the GPU (sz05 > sz1).
 - **Conclusion:** the CPU proxy is reliable for direction (jumps help, flat trimming hurts) but not for ranking close variants. Fine-tuning is done on GPU.
+- **Large numerics scan of real generator output** (j100sz05, 4 seeds incl. 2^63−1, 3,200 records each = 409,600 channels, upstream causal_standardize):
+  - **Without the guard** (a stale pre-guard copy): max |truth| reached **1.48e18**, about half the overflow. With jumps on every record the guard is essential.
+  - **With the guard** (current generator): max |truth| = 1.0e12 (the limit), 0 non-finite channels.
+- **Re-measured with the guard:**
+
+| Config | values/s | × requirement | VmPeak | Validator |
+|---|---|---|---|---|
+| j100sz05 | 1.29M | 4.5× | 1,388 MB | OK |
+| jsz05dr60 | 1.29M | 4.4× | 1,367 MB | OK |
+
+  - The earlier perf and validator numbers for the candidates came from pre-guard copies.
+- **Process rule:** refresh `.claude-work/tmp/gen_*` from `generator/` before any check (the grid already copies fresh files every run).
