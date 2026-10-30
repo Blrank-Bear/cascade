@@ -159,3 +159,18 @@ These are hypotheses. The proxy only says the corpus looks more like the pool; G
 - **Why:** spans inside moving channels barely change the trailing-run profile of contexts (the holds table matches base to ±0.002).
 - **What jumps 0.3 changes instead:** windows move from the 1024+ run bucket (0.252 → 0.213) into 64–256 (0.050 → 0.073). Level changes inside long flat (step-like) channels are what move the metric.
 - **Follow-up:** jumps variants (rate 0.5, max_shifts 12, outliers off).
+
+## Jumps variants, paired against base per seed (2026-10-30)
+Seeds share initialisation across corpora, so per-seed differences are much tighter than raw scores. Tool: `tools/proxy/paired.py`.
+
+| Arm (`v2_jumps.json`) | Mean d vs base | t (4 seeds) | Per-seed d |
+|---|---|---|---|
+| rate 0.3, max_shifts 12 (j30s12) | **−0.0038** | **−8.2** | −0.0030 / −0.0033 / −0.0037 / −0.0051 |
+| rate 0.3, max_outliers 0.25 (j30no) | −0.0034 | −3.3 | |
+| rate 0.5 (j50) | −0.0034 | −2.9 | |
+| rate 0.3 (j30) | −0.0028 | −2.2 | one seed +0.0001 |
+| holds 0.3 / 0.6, j30 + fk50 | ≈ 0 | < 0.5 | noise |
+| fk50 | +0.0045 | +3.7 | worse |
+
+- **More level shifts help; one-point outliers don't.** The best single setting is j30s12: about 1.4% better than base on every seed.
+- **Next:** combine them (j50s12no, j30s24, j50s24no).
