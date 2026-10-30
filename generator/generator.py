@@ -32491,3 +32491,98 @@ class Generator(_V2HoldsParent):
         if self._v2holds_on():
             base = _v2holds_rows(base, self._v2pipe_seed, self._v2holds_cfg)
         return super()._v2pipe_rows(base)
+
+
+# ── v2 numerics guard: keep every channel far from the joint-loss overflow ───
+# The v2 trainer standardises each channel causally (expanding mean/std from the
+# series start, std floored at 1e-5) and feeds truth = (next patch - loc) / scale to
+# the energy-score loss unclamped; a float32 norm overflows once |truth| > ~3e18 and
+# the leg dies as "non-finite loss" (a burned submission). Channels that start exactly
+# constant sit on the 1e-5 floor, so a change of ~1e12-scale values gets there.
+# This guard recomputes the trainer's causal statistics per channel and, when the
+# largest standardised next-patch value exceeds `limit`, divides the channel by a
+# power of ten (exact holds, shape and cross-channel correlation are preserved).
+# ON by default (it only touches channels that would put training at risk);
+# `v2_safe.json` {"enabled": false} switches it off.
+_V2SAFE_FILE = "v2_safe.json"
+_V2SAFE_DEFAULTS = {"enabled": True, "limit": 1e12, "max_exponent": 24}
+_V2SAFE_PATCH = 32
+_V2SAFE_EPS = 1e-5
+
+
+def _v2safe_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2SAFE_FILE
+    if not path.is_file():
+        return dict(_V2SAFE_DEFAULTS)
+    return {**_V2SAFE_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2safe_is_binary(ch: np.ndarray) -> bool:
+    return bool(np.all((np.abs(ch) < 1e-9) | (np.abs(ch - 1.0) < 1e-9)))
+
+
+def _v2safe_causal_stats(ch: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Expanding loc/scale per step, as upstream causal_standardize (no mask)."""
+    x = ch - ch[0]
+    n = np.arange(1, ch.size + 1, dtype=np.float64)
+    loc = np.cumsum(x) / n
+    var = np.cumsum(x * x) / n - loc * loc
+    return loc + ch[0], np.maximum(np.sqrt(np.maximum(var, 0.0)), _V2SAFE_EPS)
+
+
+def _v2safe_max_truth(ch: np.ndarray) -> float:
+    """Largest |(next patch - loc_t) / scale_t| over the trainer's patch boundaries."""
+    p = ch.size // _V2SAFE_PATCH
+    if p < 2 or _v2safe_is_binary(ch):
+        return 0.0
+    x = ch[:p * _V2SAFE_PATCH]
+    loc, scale = _v2safe_causal_stats(x)
+    ends = np.arange(1, p) * _V2SAFE_PATCH - 1
+    nxt = x[_V2SAFE_PATCH:].reshape(p - 1, _V2SAFE_PATCH)
+    return float(np.max(np.abs(nxt - loc[ends, None]) / scale[ends, None]))
+
+
+def _v2safe_channel(ch: np.ndarray, cfg: dict) -> np.ndarray:
+    x = np.asarray(ch, dtype=np.float64)
+    limit, spent = float(cfg["limit"]), 0
+    worst = _v2safe_max_truth(x)
+    while worst > limit and spent < int(cfg["max_exponent"]):
+        d = min(int(np.ceil(np.log10(worst / limit))), int(cfg["max_exponent"]) - spent)
+        x = x / (10.0 ** max(d, 1))
+        spent += max(d, 1)
+        worst = _v2safe_max_truth(x)
+    if worst > limit:
+        return np.zeros_like(x)
+    return x
+
+
+def _v2safe_values(values: np.ndarray, cfg: dict) -> np.ndarray:
+    out = np.asarray(values, dtype=np.float64).copy()
+    for c in range(out.shape[0]):
+        if _v2safe_max_truth(out[c]) > float(cfg["limit"]):
+            out[c] = _v2safe_channel(out[c], cfg)
+    return out.astype(np.float32)
+
+
+def _v2safe_records(records, cfg: dict) -> Iterator[dict]:
+    for record in records:
+        yield {**record, "values": _v2safe_values(record["values"], cfg)}
+
+
+_V2SafeParent = Generator
+
+
+class Generator(_V2SafeParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2safe_cfg = _v2safe_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series: int) -> Iterator[dict]:
+        records = super().generate(n_series)
+        if not bool(self._v2safe_cfg["enabled"]):
+            yield from records
+            return
+        try:
+            yield from _v2safe_records(records, self._v2safe_cfg)
+        finally:
+            records.close()
