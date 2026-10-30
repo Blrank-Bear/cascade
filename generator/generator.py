@@ -32586,3 +32586,136 @@ class Generator(_V2SafeParent):
             yield from _v2safe_records(records, self._v2safe_cfg)
         finally:
             records.close()
+
+
+# ── v2 dock occupancy: bounded integer station-status rows (transport) ────────
+# Transport is the one eval domain where the proxy model is worse than naive, and its
+# windows are mostly bike-share station status (GBFS, 1-5 min): small integers in
+# [0, capacity], long holds when idle, +-1 steps when busy, a daily rhythm, rebalancing
+# jumps and offline (frozen / zero) stretches. On a `rate` fraction of rows this stage
+# inserts such a row after the king-row stages (so jumps/quantization never touch it).
+# Configured by an optional `v2_dock.json` in the config dir.
+_V2DOCK_TAG = 0x7A2F000B
+_V2DOCK_FILE = "v2_dock.json"
+_V2DOCK_DEFAULTS = {"rate": 0.0, "cap_min": 6.0, "cap_max": 80.0, "busy_min": 0.02, "busy_max": 6.0, "traffic_share": 0.35,
+                    "periods": [288.0, 1440.0, 96.0, 24.0], "period_weights": [0.6, 0.25, 0.08, 0.07]}
+
+
+def _v2dock_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2DOCK_FILE
+    if not path.is_file():
+        return dict(_V2DOCK_DEFAULTS)
+    return {**_V2DOCK_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2dock_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2DOCK_TAG], spawn_key=(i,)))
+
+
+def _v2dock_period(rng, cfg: dict) -> float:
+    w = np.asarray(cfg["period_weights"], dtype=np.float64)
+    return float(np.asarray(cfg["periods"], dtype=np.float64)[rng.choice(w.size, p=w / w.sum())])
+
+
+def _v2dock_activity(rng, L: int, period: float, cfg: dict) -> np.ndarray:
+    """Expected moves per step: a daily profile (quiet nights), weekly modulation, busyness."""
+    t = np.arange(L, dtype=np.float64)
+    day = _v2mix_unit(_v2mix_seasonal_profile(rng, t, period))
+    week = 1.0 + 0.3 * rng.uniform() * np.sin(2.0 * np.pi * t / (7.0 * period) + rng.uniform(0, 2 * np.pi))
+    night = np.clip(day * rng.uniform(1.0, 3.0) + rng.uniform(-1.5, 0.5), -6.0, 3.0)
+    busy = _v2pool_log_uniform(rng, float(cfg["busy_min"]), float(cfg["busy_max"])) * (1440.0 / period) ** 0.5
+    return busy * np.exp(night) / np.exp(night).mean() * week
+
+
+def _v2dock_drift(rng, L: int, period: float) -> np.ndarray:
+    """Share of moves that are arrivals: commuter stations fill and empty on opposite phases."""
+    t = np.arange(L, dtype=np.float64)
+    swing = rng.uniform(0.0, 0.45) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, period)) / 2.0
+    return np.clip(0.5 + swing, 0.05, 0.95)
+
+
+def _v2dock_walk(rng, moves: np.ndarray, p_in: np.ndarray, cap: int, start: int,
+                 target: float, pull: float) -> np.ndarray:
+    """Bounded birth-death walk; arrivals lean towards the station's typical level."""
+    u = rng.random((moves.size, int(moves.max()) + 1 if moves.size else 1)).tolist()
+    m, p = moves.tolist(), p_in.tolist()
+    out, x = np.empty(moves.size), start
+    for i in range(moves.size):
+        q = min(max(p[i] + pull * (target - x) / cap, 0.02), 0.98)
+        row = u[i]
+        arrivals = sum(1 for k in range(m[i]) if row[k] < q)
+        x = min(max(x + 2 * arrivals - m[i], 0), cap)
+        out[i] = x
+    return out
+
+
+def _v2dock_rebalance(rng, y: np.ndarray, cap: int, period: float) -> np.ndarray:
+    for _ in range(int(rng.poisson(rng.uniform(0.0, 1.5) * y.size / period))):
+        at = int(rng.integers(1, y.size))
+        target = int(rng.integers(0, cap + 1))
+        shift = target - y[at]
+        y[at:] = np.clip(y[at:] + shift, 0, cap)
+    return y
+
+
+def _v2dock_offline(rng, y: np.ndarray) -> np.ndarray:
+    for _ in range(int(rng.poisson(rng.uniform(0.0, 1.0)))):
+        a = int(rng.integers(1, y.size))
+        b = min(y.size, a + int(round(_v2pool_log_uniform(rng, 6.0, 600.0))))
+        y[a:b] = 0.0 if rng.random() < 0.3 else y[a - 1]
+    return y
+
+
+def _v2dock_station(rng, cfg: dict, L: int, period: float) -> np.ndarray:
+    cap = int(round(_v2pool_log_uniform(rng, float(cfg["cap_min"]), float(cfg["cap_max"]))))
+    moves = rng.poisson(_v2dock_activity(rng, L, period, cfg))
+    target = cap * rng.beta(1.2, 1.8)
+    pull = _v2pool_log_uniform(rng, 0.05, 2.0)
+    y = _v2dock_walk(rng, moves, _v2dock_drift(rng, L, period), cap, int(round(target)), target, pull)
+    return _v2dock_offline(rng, _v2dock_rebalance(rng, y, cap, period))
+
+
+def _v2dock_traffic(rng, L: int, period: float) -> np.ndarray:
+    """Road-sensor counts per interval: Poisson around a daily profile, empty at night."""
+    t = np.arange(L, dtype=np.float64)
+    shape = np.clip(_v2mix_unit(_v2mix_seasonal_profile(rng, t, period)) * rng.uniform(1.0, 3.0), -6.0, 3.0)
+    lam = _v2pool_log_uniform(rng, 0.5, 300.0) * np.exp(shape) / np.exp(shape).mean()
+    return _v2dock_offline(rng, rng.poisson(lam).astype(np.float64))
+
+
+def _v2dock_series(rng, cfg: dict, L: int = _V2_LENGTH) -> np.ndarray:
+    period = _v2dock_period(rng, cfg)
+    if rng.random() < float(cfg["traffic_share"]):
+        return _v2dock_traffic(rng, L, period)
+    return _v2dock_station(rng, cfg, L, period)
+
+
+def _v2dock_rows(rows, seed: int, cfg: dict) -> Iterator:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2dock_rng(seed, i)
+        if rng.random() < rate:
+            yield _v2dock_series(rng, cfg)
+        yield x
+
+
+_V2DockParent = Generator
+
+
+class Generator(_V2DockParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2dock_cfg = _v2dock_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2dock_on(self) -> bool:
+        return float(self._v2dock_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2dock_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2dock_on():
+            rows = _v2dock_rows(rows, self._v2pipe_seed, self._v2dock_cfg)
+        return rows
