@@ -372,3 +372,23 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
   1. grid 2c (jsz025, jsz05dr60, jsz05sing);
   2. benchmark gate (base vs j100sz05; GIFT-Eval / BOOM / TIME) or grid 3 first, depending on the data download;
   3. grid 2d (sz05 with 12 / 48 shifts, rate 0.7).
+
+## GPU grid 2c (seed 0, same work dir)
+
+| Arm | Wins | Mean gain vs base |
+|---|---|---|
+| jsz05dr60 (sz05 + dock replace 0.6) | 6/6 | **+3.82%** |
+| jsz025 (size 0.25–2.5) | 6/6 | **+3.81%** |
+| jsz05sing (sz05 + singleton groups) | 6/6 | +3.35% |
+| j100sz05 | 6/6 | +2.69% |
+| jdr60 | 6/6 | +2.54% |
+| j100sz1 | 5/6 | +2.30% |
+
+- **The gains over sz05 (+0.7 to +1.1 points) are about the size of seed-to-seed spread** (sz05 was +2.69% on seed 0 and +3.87% on seed 1), so they need replication.
+- **Queue rebuilt** as `chain` on the server:
+  1. grid 2e, seed 0: jsz025dr60, jsz025sing, jcombo (size 0.25–2.5 + dock replace 0.6 + singleton groups);
+  2. grid 2s1e, seed 1 replication: jsz025, jsz05dr60, jsz05sing, jcombo;
+  3. grid 2d: sz05 with 12 / 48 shifts, rate 0.7;
+  4. the benchmark gate runs between steps once its data download has finished.
+- **The long-budget grid 3 was stopped;** it will be rerun with the final candidate.
+- **Process note:** never `pkill -f` a pattern that appears in the ssh command itself. That killed the session mid-update (GPU idle about 2 min).
