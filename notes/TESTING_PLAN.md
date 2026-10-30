@@ -43,3 +43,19 @@ Why 11-01:
 - It leaves about 5 days of the random-init window, where the bar is a level LCB of 1% against a fresh king and a level-unit win starts at 50% of Lane A.
 - It leaves room for the queue: generation (90 min) + training (≤ 5 h) + settlements every about 3 h. None of these is guaranteed.
 - Lane A allows **one lifetime submission per hotkey**, so missing the deadline is better than submitting an unproven entry.
+
+## 4. Stage-B grid runner (added 2026-10-29)
+On the GPU box, after `tools/pool/fetch_snapshots.py --latest 3`:
+
+```
+cd upstream
+python ../tools/duel/grid.py ../tools/duel/arms_stage_b.json --chain-toml CFG \
+    --work ../.claude-work/grid_b --hours 0.5 --device cuda --pools 3 --round-seeds grid-0,grid-1
+```
+
+- **Arms:** base, hist55, pool2_25, mix30, singleton and pool2_hist. The switch files are described in `notes/V2_EVAL_FACTS.md`.
+- **Process:** each arm is trained once with the same seed and budget, scored on 3 snapshots × 2 round seeds, and judged against base.
+- **Output:** `summary.json` lists wins per arm, out of 6.
+- **Resuming:** every step is cached, so a killed run resumes where it stopped.
+- **Smoke test:** the CPU version is `tools/duel/grid_smoke.sh`. It ran OK end to end on 2026-10-29. With a 0.0002 h budget there is no signal, and the LCB is NaN at 60 windows.
+- **Promotion rule:** an arm goes to stage D only if it wins at least 5 of 6 cells at the 0.5 h budget, with the same sign at every horizon.
