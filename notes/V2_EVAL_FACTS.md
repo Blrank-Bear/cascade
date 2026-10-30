@@ -353,3 +353,22 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 
   - The earlier perf and validator numbers for the candidates came from pre-guard copies.
 - **Process rule:** refresh `.claude-work/tmp/gen_*` from `generator/` before any check (the grid already copies fresh files every run).
+- **Where j100sz05 gains on GPU** (`tools/duel/breakdown_scores.py`; mean log arm/base, seed 0 / seed 1; negative = better):
+
+| Domain | log MASE (s0 / s1) | log WQL (s0 / s1) |
+|---|---|---|
+| transport | −0.039 / −0.045 | −0.048 / −0.043 |
+| nature | −0.038 / −0.051 | −0.062 / −0.063 |
+| econ_fin | −0.024 / −0.064 | −0.044 / −0.070 |
+| sales | −0.014 / −0.024 | −0.029 / −0.034 |
+| energy | −0.012 / −0.012 | −0.040 / −0.039 |
+| web_cloudops | +0.001 / −0.020 | −0.017 / −0.024 |
+| healthcare | **+0.010** / −0.015 | 0.000 / −0.015 |
+
+  - **Horizons:** h64 −0.036 / −0.054, h256 −0.014 / −0.032, h720 −0.005 / −0.020.
+  - **Top sources:** coinbase_spot_15m (−0.075 / −0.197), metar_us_airports, gbfs bike stations, usda hogs, energia_jp.
+  - **Healthcare** is the only domain without a clear gain: a candidate target.
+- **GPU queue (2026-10-30 14:10):**
+  1. grid 2c (jsz025, jsz05dr60, jsz05sing);
+  2. benchmark gate (base vs j100sz05; GIFT-Eval / BOOM / TIME) or grid 3 first, depending on the data download;
+  3. grid 2d (sz05 with 12 / 48 shifts, rate 0.7).
