@@ -252,3 +252,14 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
   - Arms: base / j30 / j100sz1.
   - Budget `--hours 0.1` (≈ 795 steps, ≈ 2 h per arm).
   - Scoring: 3 pools × 2 round seeds, 2,000 windows.
+
+### Round 6 (converged)
+- **size 0.5–5:** −0.0130 (t −29, the most consistent); other-window MASE 0.832, ≈ base.
+- **size 1–10 with max_shifts 12:** −0.0118.
+- **size 1–10 with max_shifts 48:** −0.0108.
+- **Optimum:** rate 1.0, max_shifts 24, max_outliers 0.25, size 0.5–10.
+
+**CPU-proxy recommendation:**
+- `v2_jumps.json` = `{"rate": 1.0, "max_shifts": 24, "max_outliers": 0.25, "size_min": 1, "size_max": 10}`: −0.0141 vs base (≈ 5.3%), better on every seed.
+- Runner-up: size 0.5–5 (lower other-window cost).
+- **This is CPU-proxy evidence only.** GPU confirmation arms are in `tools/duel/arms_jumps.json`.

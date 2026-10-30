@@ -1,0 +1,4 @@
+{"base": {},
+ "j100sz1": {"v2_jumps.json": {"rate": 1.0, "max_shifts": 24.0, "max_outliers": 0.25, "size_min": 1.0, "size_max": 10.0}},
+ "j100sz05": {"v2_jumps.json": {"rate": 1.0, "max_shifts": 24.0, "max_outliers": 0.25, "size_min": 0.5, "size_max": 5.0}},
+ "j70s24no": {"v2_jumps.json": {"rate": 0.7, "max_shifts": 24.0, "max_outliers": 0.25}}}
