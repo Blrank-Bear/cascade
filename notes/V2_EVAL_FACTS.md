@@ -235,3 +235,7 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **Smaller shifts win on both axes:** better hold precision, and a smaller other-window penalty.
 - **Large shifts hurt other windows.**
 - **Round 6:** size 0.5–5; size 1–10 with 12 and with 48 shifts.
+- **Steady state does not improve** (2026-10-30): a 30-min run stayed at about 50 s/step through step 35. The router never left the collapsed path.
+- **Screening patch** `tools/duel/fast_moe.py` (used via `duel_fast.py` / `grid_fast.py`): splits the expert weights with `unbind(0)` once per forward.
+  - **Bitwise identical** final weights after 3 steps vs the original. The original is itself bitwise reproducible run-to-run.
+  - **Speed:** 3-step wall time 166 s → 99 s. Steady-state s/step is being measured.
