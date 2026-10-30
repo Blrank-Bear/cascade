@@ -32312,3 +32312,98 @@ class Generator(_V2QuantParent):
         if self._v2quant_on():
             base = _v2quant_rows(base, self._v2pipe_seed, self._v2quant_cfg)
         return super()._v2pipe_rows(base)
+
+
+
+# ═══════════════ v2 jumps and outliers on king channels (switchable) ═══════════════
+# After the flat and quantization stages, the largest proxy gaps vs. the pool are diff
+# kurtosis and max-spike size (pool diffs are heavier-tailed: level shifts, glitches,
+# demand/price spikes). With probability `rate` per king row, each channel gets a
+# Poisson number of persistent level shifts and of one-step outliers (counts per 4096
+# steps log-uniform up to `max_shifts` / `max_outliers`), sized in multiples of the
+# channel's median absolute step (exponential with mean log-uniform in
+# [size_min, size_max]). Non-negative channels stay non-negative. Applies to king rows
+# only, before quantization and the flat stage.
+# Configured by an optional `v2_jumps.json` in the config dir.
+_V2JUMPS_TAG = 0x7A2F0008
+_V2JUMPS_FILE = "v2_jumps.json"
+_V2JUMPS_DEFAULTS = {"rate": 0.0, "max_shifts": 6.0, "max_outliers": 20.0,
+                     "size_min": 3.0, "size_max": 30.0}
+
+
+def _v2jumps_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2JUMPS_FILE
+    if not path.is_file():
+        return dict(_V2JUMPS_DEFAULTS)
+    return {**_V2JUMPS_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2jumps_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2JUMPS_TAG], spawn_key=(i,)))
+
+
+def _v2jumps_sizes(rng, n: int, step: float, cfg: dict) -> np.ndarray:
+    mean = _v2pool_log_uniform(rng, float(cfg["size_min"]), float(cfg["size_max"]))
+    return rng.choice((-1.0, 1.0), n) * rng.exponential(mean, n) * step
+
+
+def _v2jumps_count(rng, L: int, max_rate: float) -> int:
+    return int(rng.poisson(_v2pool_log_uniform(rng, 0.25, max_rate) * L / _V2_LENGTH))
+
+
+def _v2jumps_shifts(rng, L: int, step: float, cfg: dict) -> np.ndarray:
+    out = np.zeros(L)
+    n = _v2jumps_count(rng, L, float(cfg["max_shifts"]))
+    if n:
+        out[rng.integers(1, L, n)] = _v2jumps_sizes(rng, n, step, cfg)
+    return np.cumsum(out)
+
+
+def _v2jumps_outliers(rng, L: int, step: float, cfg: dict) -> np.ndarray:
+    out = np.zeros(L)
+    n = _v2jumps_count(rng, L, float(cfg["max_outliers"]))
+    if n:
+        out[rng.integers(0, L, n)] = _v2jumps_sizes(rng, n, step, cfg)
+    return out
+
+
+def _v2jumps_channel(ch: np.ndarray, rng, cfg: dict) -> np.ndarray:
+    step = _v2quant_typical_step(ch)
+    if step <= 0.0 or not np.all(np.isfinite(ch)):
+        return ch
+    L = ch.size
+    y = ch + _v2jumps_shifts(rng, L, step, cfg) + _v2jumps_outliers(rng, L, step, cfg)
+    return np.maximum(y, 0.0) if ch.min() >= 0.0 else y
+
+
+def _v2jumps_row(x, rng, cfg: dict):
+    if rng.random() >= float(cfg["rate"]):
+        return x
+    rows = _v2_as_rows(x)
+    return np.stack([_v2jumps_channel(ch, rng, cfg) for ch in rows])
+
+
+def _v2jumps_rows(rows, seed: int, cfg: dict) -> Iterator:
+    for i, x in enumerate(rows):
+        yield _v2jumps_row(x, _v2jumps_rng(seed, i), cfg)
+
+
+_V2JumpsParent = Generator
+
+
+class Generator(_V2JumpsParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2jumps_cfg = _v2jumps_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2jumps_on(self) -> bool:
+        return float(self._v2jumps_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2jumps_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        if self._v2jumps_on():
+            base = _v2jumps_rows(base, self._v2pipe_seed, self._v2jumps_cfg)
+        return super()._v2pipe_rows(base)

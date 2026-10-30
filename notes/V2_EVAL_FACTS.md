@@ -82,3 +82,20 @@ These are hypotheses. The proxy only says the corpus looks more like the pool; G
   - AUC barely moves (0.918 → 0.917), because the classifier relies on diff kurtosis and spikes.
   - Rate 0.6 slightly overshoots flat_frac, so **0.5** is recommended.
 - **Remaining largest gaps:** diff kurtosis and spikes are too low (the pool has jumps and outliers), the corpus is too periodic (seasonal_acf), and spectral entropy is too low.
+
+## Jumps and outliers (2026-10-29)
+- **`v2_jumps.json` `{"rate": r}`:** persistent level shifts plus one-step outliers on king channels, sized in median-step units. It is applied before quantization.
+- **Rate 0.3** (with flat + quant 0.5): KS falls for diff kurtosis (0.216 → 0.167) and spikes (0.204 → 0.151); AUC 0.916.
+- **Rate 0.6:** overshoots (flat_frac median 0.233 vs. 0.116, more trend); AUC 0.925. Use **0.3**.
+
+## Proxy summary (pad-stripped AUC vs. 3 snapshots; lower = closer to the pool)
+| Config | AUC |
+|---|---|
+| base | 0.927 |
+| pool2 0.25 | 0.922 |
+| flat | 0.918 |
+| flat + quant 0.5 (0.6 measured) | 0.917 |
+| flat + quant 0.5 + jumps 0.3 | **0.916** |
+
+- **What the proxy can't do:** the remaining gaps (corpus too periodic, low spectral entropy, low CV) come from the king lineage's own dynamics, and they are past the point where post-hoc transforms help.
+- **Diminishing returns:** further CPU gains will be small. The GPU grid is the real test.

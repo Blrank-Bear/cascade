@@ -56,6 +56,20 @@
     },
     "v2_history.json": {
       "rate": 0.75
+    },
+    "v2_jumps.json": {
+      "rate": 0.3
+    }
+  },
+  "flat_quant_jumps": {
+    "v2_flat.json": {
+      "enabled": true
+    },
+    "v2_quant.json": {
+      "rate": 0.5
+    },
+    "v2_jumps.json": {
+      "rate": 0.3
     }
   }
 }
