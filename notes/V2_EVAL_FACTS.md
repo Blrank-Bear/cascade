@@ -327,3 +327,13 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 | jsz05dr60 | 1.23M | 4.2× | 1,400 MB |
 
 - **Group policy** (GPU only; the CPU proxy is univariate): a `jsz05sing` arm (sz05 + singleton groups) is added to grid 2c.
+
+## GPU replication on training seed 1 (grid `grid_gpu2s1`)
+
+| Arm | Seed 0 | Seed 1 |
+|---|---|---|
+| **j100sz05** | 6/6, +2.69% | **6/6, +3.87%** (LCB +0.029 … +0.036; every horizon positive: h64 +4.8…6.1%, h256 +3.2…4.2%, h720 +1.9…3.5%) |
+| j100sz1 | 5/6, +2.30% | 2/6, +1.77% |
+
+- **j100sz05 is the confirmed leader** at the 28m / 0.1 h screening scale: 12/12 cells across two training seeds.
+- Still to run: grid 2c (jsz025, jsz05dr60, jsz05sing), then the long-budget grid 3 (base vs j100sz05 at 0.25 h).
