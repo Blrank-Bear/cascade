@@ -222,3 +222,16 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **The gain is monotone in rate up to 1.0,** i.e. every king row gets shifts.
 - **Other-window MASE creeps up** (0.831 → 0.838). Watch for over-fitting to holds; this needs GPU confirmation.
 - **Round 5:** shift size (1–10 and 10–100 median steps) and max_shifts 12, at rate 1.0.
+
+### Round 5 (shift size, at rate 1.0)
+
+| Arm | Mean d vs base | t | Hold MASE | Other MASE |
+|---|---|---|---|---|
+| size 1–10, max_shifts 24 (j100sz1) | **−0.0141** | −12.2 | 8.6e-5 | **0.834** |
+| size 3–30, max_shifts 12 | −0.0115 | −16.4 | 1.11e-4 | 0.834 |
+| size 3–30, max_shifts 24 | −0.0112 | −16.3 | 1.02e-4 | 0.838 |
+| size 10–100, max_shifts 24 | −0.0091 | −6.6 | 1.03e-4 | 0.844 |
+
+- **Smaller shifts win on both axes:** better hold precision, and a smaller other-window penalty.
+- **Large shifts hurt other windows.**
+- **Round 6:** size 0.5–5; size 1–10 with 12 and with 48 shifts.
