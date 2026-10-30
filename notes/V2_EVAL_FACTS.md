@@ -337,3 +337,7 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 
 - **j100sz05 is the confirmed leader** at the 28m / 0.1 h screening scale: 12/12 cells across two training seeds.
 - Still to run: grid 2c (jsz025, jsz05dr60, jsz05sing), then the long-budget grid 3 (base vs j100sz05 at 0.25 h).
+- **h=256 transfer proxy** (`tools/proxy/transfer_h.py --horizon 256 --ctx 1024`), paired vs base:
+  - j100sz1 −0.0083, jdr60 −0.0074, j100sz05 −0.0055, jsz025 −0.0034.
+  - Every jumps arm beats base, but the ranking is the reverse of the GPU (sz05 > sz1).
+- **Conclusion:** the CPU proxy is reliable for direction (jumps help, flat trimming hurts) but not for ranking close variants. Fine-tuning is done on GPU.
