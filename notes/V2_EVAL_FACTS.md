@@ -133,3 +133,19 @@ These are hypotheses. The proxy only says the corpus looks more like the pool; G
   - **On hold windows** naive is exact (1e-9), base reaches 3.7e-4, flat 1.5e-3 and real-pool data 2.2e-3.
   - **The ranking is decided by hold precision:** jumps 0.2587 < quant 0.2625 ≈ base 0.2628 < mix 0.2653 < pool2 0.2632 < hist55 0.2694 < full stack 0.2718 < flat 0.2775 < real pool 0.2874.
 - **Biggest headroom: hold precision.** Base is at 3.7e-4 on hold windows against 1e-9 for exact copying, worth about 2× on round MASE. Any stage that removes or perturbs hold segments should be treated as harmful until a GPU run says otherwise.
+
+## Mild flat trimming is also harmful (2026-10-30)
+- **Arms:** `v2_flat` with `keep_prob` 0.5 (fk50); the same with `tail` 1024 (fk50t1k); and jumps 0.3 + fk50.
+- **Setup:** 4 seeds, chain metric, pools 10-24 and 10-25.
+
+| Arm | Score | MASE on holds | MASE on others |
+|---|---|---|---|
+| j30 | **0.2613** | 2.65e-4 | 0.835 |
+| base | 0.2641 | 4.01e-4 | 0.831 |
+| j30 + fk50 | 0.2644 | 5.60e-4 | 0.830 |
+| fk50t1k | 0.2651 | 5.75e-4 | 0.830 |
+| fk50 | 0.2685 | 7.75e-4 | 0.830 |
+
+- **Long flat tails drive hold precision.** Every trim of them worsens hold MASE roughly in proportion to how much flat content it removes. The small gain on other windows (≈0.001) doesn't pay for it.
+- **Why jumps 0.3 works:** it adds mid-length hold runs and raises P(hold | run 4–64) from 0.14/0.46 to 0.19/0.53, so the corpus becomes more confident about holds, not less.
+- **Next lever:** more exact holds inside dynamic channels (the `v2_holds` stage), not fewer flat tails.
