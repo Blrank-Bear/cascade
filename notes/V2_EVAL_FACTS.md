@@ -317,3 +317,13 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **GPU, jdr60** (j100sz1 + dock replace 0.6): **6/6, mean +2.54%**. It beats j100sz1 (+2.30%) in every cell by +0.15 to +0.35 points, but that is one training seed and the cells are correlated.
   - So the GPU shows a small consistent gain that the CPU proxy called noise.
   - jsz05dr60 (sz05 + replace 0.6) is added to the grid 2c queue.
+- **Smaller shifts on CPU** (vs j100sz05): 0.25–2.5 **−0.0017**; 0.1–1 +0.0006; 0.15–1.5 +0.0014; outliers at the default rate are neutral. The CPU optimum is size ≈ 0.25–2.5 with 24 shifts.
+- **Throughput and memory** (1 pinned core, RLIMIT_AS 2048 MB; v2 needs 289k values/s):
+
+| Config | values/s | × requirement | VmPeak |
+|---|---|---|---|
+| j100sz05 | 1.50M | 5.2× | 1,358 MB |
+| jsz025 | 1.39M | 4.8× | 1,304 MB |
+| jsz05dr60 | 1.23M | 4.2× | 1,400 MB |
+
+- **Group policy** (GPU only; the CPU proxy is univariate): a `jsz05sing` arm (sz05 + singleton groups) is added to grid 2c.
