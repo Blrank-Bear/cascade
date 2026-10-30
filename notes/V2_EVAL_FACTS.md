@@ -309,3 +309,8 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **j100sz05 passes the promotion rule** (≥ 5/6 cells, same sign at every horizon).
 - **The GPU prefers smaller shifts,** consistent with sz05's lower other-window cost on the proxy.
 - **Replace sweep on CPU** (vs j100sz1): rate 0.8 +0.0021, rate 1.0 +0.0011, cut 0.1 −0.0005. jdr60's −0.0018 looks like noise (non-monotone), so replace mode stays off. jdr60 is still on the GPU queue as a check.
+- **CPU sweep around sz05** (paired vs j100sz05):
+  - size 0.25–2.5: **−0.0017** (all 4 seeds better);
+  - 12 shifts: +0.0037; 48 shifts: +0.0024. 24 shifts is optimal.
+  - jsz025 is queued on the GPU (grid 2 work dir) before the long-budget grid 3.
+  - Next on CPU: sizes 0.1–1 and 0.15–1.5, and size 0.25–2.5 with outliers at the default rate.
