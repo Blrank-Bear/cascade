@@ -198,3 +198,14 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **Shift count saturates at about 24.** Rate is still improving at 0.7.
 - **Other-window MASE is flat** at about 0.837 across these arms.
 - **Round 4:** rate 0.85 / 1.0 at 24 shifts, and 36 shifts at rate 0.7.
+
+## Why early v2 training steps are slow on the 4090 (2026-10-30)
+- **Measured:** 28m preset, 10 steps in 476 s (about 47 s/step), GPU at 100%.
+- **Profile of one step:** `aten::add_` 20.7 s (55% of GPU time) + `aten::fill_` 13.3 s (35%); matmuls only about 1 s.
+- **Cause** (upstream `cascade/trainer/pyramid_model.py:304-315`):
+  - When the router is collapsed (`cap * E > 2 * N * K`), the MoE layer falls back to a Python loop over experts with `x @ weight[expert]`.
+  - The backward of `weight[expert]` materialises a zero-filled gradient the size of the whole `(E, d, h)` expert tensor and adds into it, once per expert.
+  - At random init the router is unbalanced, so the first steps take this path.
+  - `route_bias` should rebalance it, after which the batched `bmm` path applies.
+- **Upstream code:** validators run the same code; we do not patch it.
+- **Open question:** what the steady-state step time is. A 30-min run with a per-step heartbeat (`.claude-work/tmp/step_clock.py`, which wraps `combine_gradients`) is measuring it.
