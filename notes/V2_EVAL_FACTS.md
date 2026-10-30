@@ -186,3 +186,15 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 
 - **The gain is all hold precision.** Other-window MASE creeps up slightly (+0.006).
 - **Round 3** looks for where the trend turns: rate 0.7, max_shifts 48.
+
+### Round 3 (where does it turn?)
+
+| Arm | Mean d vs base | t | Hold MASE | Other MASE |
+|---|---|---|---|---|
+| rate 0.7, max_shifts 24, max_outliers 0.25 (j70s24no) | **−0.0083** | **−12.0** | 1.51e-4 | 0.837 |
+| rate 0.7, max_shifts 48 | −0.0079 | −8.4 | 1.46e-4 | 0.836 |
+| rate 0.5, max_shifts 48 | −0.0064 | −9.2 | 1.81e-4 | 0.836 |
+
+- **Shift count saturates at about 24.** Rate is still improving at 0.7.
+- **Other-window MASE is flat** at about 0.837 across these arms.
+- **Round 4:** rate 0.85 / 1.0 at 24 shifts, and 36 shifts at rate 0.7.
