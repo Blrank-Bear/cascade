@@ -1,0 +1,2 @@
+{"note": "base + v2 jumps/outliers stage at rate 0.3 (best CPU transfer proxy: 0.2613 vs base 0.2641 over 4 seeds, ~1.4 SE). Recommended.",
+ "switches": {"v2_jumps.json": {"rate": 0.3}}}
