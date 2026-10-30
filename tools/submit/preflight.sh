@@ -31,6 +31,12 @@ for P in $PROFILES; do
   PKG=$ROOT/submission/$P/generator
   LOGS=$ROOT/submission/$P/logs; mkdir -p "$LOGS"
   echo "  \"$P\": {" >> "$REPORT.tmp"
+  # Primary: the v2 contract itself ([training] := upstream [v2.training], unchanged).
+  # The plain offline verify below also applies pre-v2 rules, which reject the v2 `groups`
+  # field by design, so its failure on corpus_check_failed/groups is expected.
+  "$PY" "$ROOT/tools/duel/make_v2_cfg.py" chain.toml "$ROOT/.claude-work/configs/chain.v2-verify.toml" \
+      --set 'corpus_mode="shards"' > /dev/null
+  run_check verify_v2_contract  "$LOGS/verify_v2.json"       "$CASCADE" verify "$PKG" --chain-toml "$ROOT/.claude-work/configs/chain.v2-verify.toml" --json
   run_check verify_offline      "$LOGS/verify_offline.json"  "$CASCADE" verify "$PKG" --json
   run_check verify_strict_guard "$LOGS/verify_testnet.json"  "$CASCADE" verify "$PKG" --chain-toml chain.testnet.toml --json
   run_check dedup_vs_king       "$LOGS/dedup.json"           "$PY" "$ROOT/tools/submit/dedup_check.py" "$PKG" "$KING"
