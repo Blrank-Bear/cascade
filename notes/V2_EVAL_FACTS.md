@@ -99,3 +99,19 @@ These are hypotheses. The proxy only says the corpus looks more like the pool; G
 
 - **What the proxy can't do:** the remaining gaps (corpus too periodic, low spectral entropy, low CV) come from the king lineage's own dynamics, and they are past the point where post-hoc transforms help.
 - **Diminishing returns:** further CPU gains will be small. The GPU grid is the real test.
+
+## Negative result: additive observation noise (2026-10-29, not kept)
+- Tested a white or AR(1) noise stage on king channels (noise std 0.02–0.8 × channel std), on top of flat + quant 0.5 + jumps 0.3.
+- **Result:** proxy AUC 0.926 at rate 0.3 and 0.946 at rate 0.6, both worse than 0.916 without it. acf1_diff moves the wrong way.
+- **Conclusion:** the pool's extra roughness is not additive measurement noise. The code was dropped before commit.
+
+## IMPORTANT: exact holds dominate the round metric (checked in `cascade/eval/{mase,crps,scoring}.py`)
+- **Round score:** sqrt(geomean per-window WQL × geomean per-window MASE), computed in log space with floors of **1e-12** (WQL) and **1e-9** (MASE). Windows with an all-zero target are masked out of WQL.
+- **MASE definition:** mean |y − median forecast| / in-sample *seasonal*-naive MAE, with the seasonal period taken from the window metadata and the scale floored at 1e-9.
+- **Exact-hold windows:** **3.1–3.7%** of eval windows (**6.6% at h = 64**) have a target exactly equal to the last history value. 14% of all target points equal the last value.
+- **Leverage:** an exact or near-exact hold forecast on such a window is worth up to ln(1e8) ≈ 18 log-units of MASE. Over about 3.4% of windows that is about a 0.5× factor on geomean MASE, larger than any realistic modelling gain.
+- **Consequences:**
+  - The king lineage's heavy hold content (26% of channels constant over their last 512 points; `held_rate` 64%) is plausibly deliberate. It teaches confident, exact persistence.
+  - **`v2_flat.json` (flat replacement) is risky.** It removes exactly that content. Its rationale (the pool builder drops constant *series*) does not hold at the window level. Keep it out of the default stack and let the GPU grid decide, using only the `flat` single arm.
+  - The quantization stage creates ties and exact repeats, which may help here.
+  - The feature proxy (AUC) is blind to this. The transfer proxy now uses the chain's metric and floors.

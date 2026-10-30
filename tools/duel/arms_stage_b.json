@@ -25,29 +25,7 @@
       "policy": "singleton"
     }
   },
-  "flat_pool2_hist75": {
-    "v2_flat.json": {
-      "enabled": true
-    },
-    "v2_pool2.json": {
-      "rate": 0.25
-    },
-    "v2_history.json": {
-      "rate": 0.75
-    }
-  },
-  "flat_quant50": {
-    "v2_flat.json": {
-      "enabled": true
-    },
-    "v2_quant.json": {
-      "rate": 0.5
-    }
-  },
   "full_stack": {
-    "v2_flat.json": {
-      "enabled": true
-    },
     "v2_quant.json": {
       "rate": 0.5
     },
@@ -55,16 +33,13 @@
       "rate": 0.25
     },
     "v2_history.json": {
-      "rate": 0.75
+      "rate": 0.55
     },
     "v2_jumps.json": {
       "rate": 0.3
     }
   },
-  "flat_quant_jumps": {
-    "v2_flat.json": {
-      "enabled": true
-    },
+  "quant_jumps": {
     "v2_quant.json": {
       "rate": 0.5
     },
