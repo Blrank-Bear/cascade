@@ -115,3 +115,21 @@ These are hypotheses. The proxy only says the corpus looks more like the pool; G
   - **`v2_flat.json` (flat replacement) is risky.** It removes exactly that content. Its rationale (the pool builder drops constant *series*) does not hold at the window level. Keep it out of the default stack and let the GPU grid decide, using only the `flat` single arm.
   - The quantization stage creates ties and exact repeats, which may help here.
   - The feature proxy (AUC) is blind to this. The transfer proxy now uses the chain's metric and floors.
+
+## Hold conditional and transfer proxy (chain metric), 2026-10-29
+`tools/proxy/holds.py` gives P(exact-hold target | trailing constant run of the context) at h = 64. Cells are share of windows / P(hold).
+
+| Set | P(hold) | run 0 | run 16–64 | run 64–256 | run 256–1024 | run ≥1024 |
+|---|---|---|---|---|---|---|
+| eval 10-24 | 0.066 | 0.71 / 0.002 | 0.04 / 0.30 | 0.04 / 0.68 | 0.02 / 0.86 | 0.006 / 0.89 |
+| eval 10-25 | 0.059 | 0.72 / 0.001 | 0.06 / 0.28 | 0.03 / 0.71 | 0.02 / 0.78 | 0.004 / 1.00 |
+| base corpus | **0.483** | 0.40 / 0.001 | 0.03 / 0.46 | 0.05 / 0.82 | 0.19 / 0.96 | 0.25 / 0.97 |
+| flat stage | 0.278 | 0.60 / 0.000 | 0.02 / 0.33 | 0.02 / 0.71 | 0.09 / 0.97 | 0.17 / 0.96 |
+| jumps 0.3 | 0.479 | 0.39 / 0.001 | 0.04 / 0.53 | 0.07 / 0.82 | 0.20 / 0.94 | 0.21 / 0.96 |
+
+- **The king corpus is about 8× hold-heavy and over-confident in holds.** Under the log-floor metric that is close to optimal. A correct exact hold is worth about 18 log-units; a wrong hold costs only a naive-sized error. The break-even is roughly P(hold) > 0.5%.
+- **The transfer proxy** (small CPU MLP; chain metric; trained per corpus; scored on 10-24 and 10-25 at h = 64) splits geomean MASE into hold and other windows:
+  - **On other windows** every corpus beats naive (about 0.83 vs. 0.88), and corpora are within about 2% of each other.
+  - **On hold windows** naive is exact (1e-9), base reaches 3.7e-4, flat 1.5e-3 and real-pool data 2.2e-3.
+  - **The ranking is decided by hold precision:** jumps 0.2587 < quant 0.2625 ≈ base 0.2628 < mix 0.2653 < pool2 0.2632 < hist55 0.2694 < full stack 0.2718 < flat 0.2775 < real pool 0.2874.
+- **Biggest headroom: hold precision.** Base is at 3.7e-4 on hold windows against 1e-9 for exact copying, worth about 2× on round MASE. Any stage that removes or perturbs hold segments should be treated as harmful until a GPU run says otherwise.
