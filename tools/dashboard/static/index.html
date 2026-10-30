@@ -477,7 +477,7 @@ function ring(v, max, label, unit, color) {
 function spark(svg, ys, color, max) {
   const W = svg.clientWidth || 300, H = svg.clientHeight || 46, v = ys.filter((y) => typeof y === "number");
   if (v.length < 2) { svg.innerHTML = ""; return; }
-  const hi = max ?? Math.max(...v) * 1.1 || 1;
+  const hi = max ?? (Math.max(...v) * 1.1 || 1);
   const X = (i) => i * W / (ys.length - 1), Y = (y) => H - 2 - (y / hi) * (H - 4);
   let d = ""; ys.forEach((y, i) => { if (typeof y === "number") d += (d ? "L" : "M") + X(i).toFixed(1) + "," + Y(y).toFixed(1); });
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
