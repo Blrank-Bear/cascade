@@ -263,3 +263,23 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - `v2_jumps.json` = `{"rate": 1.0, "max_shifts": 24, "max_outliers": 0.25, "size_min": 1, "size_max": 10}`: −0.0141 vs base (≈ 5.3%), better on every seed.
 - Runner-up: size 0.5–5 (lower other-window cost).
 - **This is CPU-proxy evidence only.** GPU confirmation arms are in `tools/duel/arms_jumps.json`.
+
+## Numerics guard `v2_safe.json`, on by default (2026-10-30)
+- **The bug:** GPU grid 1's base arm diverged at step 49 with a non-finite joint loss. On chain that is a burned submission.
+- **Cause:** the trainer's causal scale is an expanding std floored at 1e-5. Channels that start exactly constant around 1e12 then change give truth ≈ 1e17. The energy-score float32 norm overflows at about 3e18.
+- **Measured:** 0.6% of channels exceed 1e15; worst 8.9e16 (base) and 1.7e17 (jumps). A 12M-channel training run reaches the overflow (`tools/proxy/numerics.py`).
+- **Fix:** recompute the trainer's statistics in numpy and divide by 10^k any channel above 1e12.
+  - Matches upstream within 7.6e-6 relative on 3,000 channels; same flags 3000/3000.
+  - After the fix the worst channel is 9.9e11; none zeroed; hold pattern preserved.
+- **Regression checks:**
+  - Inner goldens unchanged.
+  - With the guard switched off, output is identical to the old v2 goldens; v2 goldens re-recorded with it on.
+  - Validator OK; VmPeak 1,297 MB.
+- **On GPU:** grid 2's base arm trained past the old failure point without diverging.
+
+## Dock / traffic family `v2_dock.json` (off)
+- **Target:** transport, the only domain worse than naive (log MASE +0.019, log WQL +0.052 with j100sz1); mostly GBFS bike-dock status plus 5-min road counts.
+- **Fit:** the family matches eval transport statistics.
+- **Transport improves:** with j100sz1, dock 10% takes transport to +0.001 / +0.029; econ_fin, nature and 1-min data improve too.
+- **Overall it is worse:** 0.2533 (10%) and 0.2536 (5%) vs 0.2500. Hold MASE 1.2e-4 vs 8.6e-5; other MASE 0.836 vs 0.834.
+- **Likely reason:** inserted rows displace hold-rich king rows from the fixed record budget. Kept off.
