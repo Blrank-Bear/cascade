@@ -174,3 +174,15 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 
 - **More level shifts help; one-point outliers don't.** The best single setting is j30s12: about 1.4% better than base on every seed.
 - **Next:** combine them (j50s12no, j30s24, j50s24no).
+
+### Round 2 (combining)
+
+| Arm | Mean d vs base | t | Hold MASE | Other MASE |
+|---|---|---|---|---|
+| rate 0.5, max_shifts 24, max_outliers 0.25 (j50s24no) | **−0.0072** | −5.4 | 1.70e-4 | 0.837 |
+| rate 0.5, max_shifts 12, max_outliers 0.25 | −0.0049 | −2.4 | 2.31e-4 | 0.835 |
+| rate 0.3, max_shifts 24 | −0.0041 | −7.4 | 2.43e-4 | 0.836 |
+| base | 0 | | 4.01e-4 | 0.831 |
+
+- **The gain is all hold precision.** Other-window MASE creeps up slightly (+0.006).
+- **Round 3** looks for where the trend turns: rate 0.7, max_shifts 48.
