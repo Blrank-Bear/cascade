@@ -7,6 +7,11 @@ section swap reproduces the lane-A v2 training contract for duel.py / grid.py.
     python make_v2_cfg.py UPSTREAM_CHAIN.toml OUT.toml [--set key=value ...]
 
 --set values are written verbatim as TOML (quote strings: --set 'arch_preset="x"').
+
+    python make_v2_cfg.py UPSTREAM_CHAIN.toml OUT.toml --preset 28m [--set ...]
+
+--preset swaps in a smaller official pyramid size (2m/7m/28m) for screening on a
+24 GB GPU and re-pins base_arch_digest (run with upstream's venv; cwd = upstream).
 """
 from __future__ import annotations
 
@@ -78,6 +83,45 @@ def build_v2(upstream_text: str, sets: dict[str, str]) -> str:
     return retarget_round_sizes(text, tomllib.loads(text)["training"]["arch_preset"])
 
 
+# --- screening presets: a smaller official pyramid size (same expert geometry) ---
+# Mirrors upstream cascade/trainer/pyramid_model.py CascadeMoEConfig.from_contract.
+PRESET_DIMS = {"2m": (128, 276), "7m": (256, 552), "28m": (512, 1104), "120m": (1088, 2346)}
+
+
+def preset_sets(preset: str) -> dict[str, str]:
+    d, ffn = PRESET_DIMS[preset]
+    return {"arch_preset": f'"cascade-moe-v2-{preset}"', "d_model": str(d),
+            "num_heads": str(d // 64), "d_ff": str(ffn)}
+
+
+def recompute_digest(out: Path) -> str:
+    """Pin base_arch_digest to the arch actually configured (needs upstream's venv)."""
+    from cascade.shared.config import load_chain_config
+    from cascade.trainer.contract import compute_base_arch_digest
+    digest = compute_base_arch_digest(load_chain_config(out).training)
+    text = re.sub(r'^base_arch_digest = ".*"$', f'base_arch_digest = "{digest}"',
+                  out.read_text(), count=1, flags=re.M)
+    out.write_text(text)
+    return digest
+
+
+def main_preset() -> None:
+    """Entry for `--preset SIZE`: build the config, then pin the digest for that size."""
+    ap = argparse.ArgumentParser()
+    ap.add_argument("upstream", type=Path)
+    ap.add_argument("out", type=Path)
+    ap.add_argument("--preset", required=True, choices=sorted(PRESET_DIMS))
+    ap.add_argument("--set", action="append", default=[])
+    args = ap.parse_args()
+    sets = parse_sets(args.set)
+    sets.update(preset_sets(args.preset))
+    args.out.write_text(build_v2(args.upstream.read_text(), sets))
+    digest = recompute_digest(args.out)
+    got = tomllib.loads(args.out.read_text())["training"]
+    print(f"wrote {args.out}; preset={got['arch_preset']} d_model={got['d_model']} "
+          f"micro_batches={got['micro_batches']} digest={digest[:12]}")
+
+
 def parse_sets(items: list[str]) -> dict[str, str]:
     sets = dict(DEFAULT_SETS)
     for item in items:
@@ -103,4 +147,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    main_preset() if "--preset" in sys.argv else main()
