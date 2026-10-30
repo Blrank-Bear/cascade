@@ -239,3 +239,16 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **Screening patch** `tools/duel/fast_moe.py` (used via `duel_fast.py` / `grid_fast.py`): splits the expert weights with `unbind(0)` once per forward.
   - **Bitwise identical** final weights after 3 steps vs the original. The original is itself bitwise reproducible run-to-run.
   - **Speed:** 3-step wall time 166 s → 99 s. Steady-state s/step is being measured.
+- **Steady-state step times on the 4090, 28m preset:**
+
+| Setup | s/step |
+|---|---|
+| upstream code, 8 micro-batches | ≈ 50 |
+| `fast_moe` patch, 8 micro-batches | ≈ 25.5 |
+| `fast_moe` patch, 2 micro-batches (`--set micro_batches=2`, 22.6 GB VRAM) | **≈ 8.4** |
+
+  - The micro-batch count is designed to leave the maths unchanged (full-batch load counts, global gradient combine). It's not bitwise identical, but every grid arm uses the same config, so comparisons stay paired.
+- **First GPU grid** (`.claude-work/grid_gpu1` on the server):
+  - Arms: base / j30 / j100sz1.
+  - Budget `--hours 0.1` (≈ 795 steps, ≈ 2 h per arm).
+  - Scoring: 3 pools × 2 round seeds, 2,000 windows.
