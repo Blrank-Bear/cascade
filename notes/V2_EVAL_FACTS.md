@@ -314,3 +314,6 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
   - 12 shifts: +0.0037; 48 shifts: +0.0024. 24 shifts is optimal.
   - jsz025 is queued on the GPU (grid 2 work dir) before the long-budget grid 3.
   - Next on CPU: sizes 0.1–1 and 0.15–1.5, and size 0.25–2.5 with outliers at the default rate.
+- **GPU, jdr60** (j100sz1 + dock replace 0.6): **6/6, mean +2.54%**. It beats j100sz1 (+2.30%) in every cell by +0.15 to +0.35 points, but that is one training seed and the cells are correlated.
+  - So the GPU shows a small consistent gain that the CPU proxy called noise.
+  - jsz05dr60 (sz05 + replace 0.6) is added to the grid 2c queue.
