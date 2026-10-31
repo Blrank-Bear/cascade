@@ -1,0 +1,106 @@
+{
+ "results": [
+  {
+   "feature": "{\"v2_jumps.json\": {\"max_outliers\": 0.25, \"max_shifts\": 24.0, \"rate\": 1.0, \"size_max\": 2.5, \"size_min\": 0.25}}",
+   "arm_names": [
+    "jsz025"
+   ],
+   "seeds": [
+    0
+   ],
+   "per_seed_gain": [
+    0.001977211468816039
+   ],
+   "per_seed_wins": [
+    "0/6"
+   ],
+   "stats": {
+    "n": 1,
+    "mean": 0.001977211468816039,
+    "sd": null,
+    "t": null,
+    "min": 0.001977211468816039,
+    "max": 0.001977211468816039,
+    "all_pos": true,
+    "all_neg": false
+   },
+   "horizon_means": {
+    "64": 0.013356184780694412,
+    "256": -0.0029134179890017795,
+    "720": -0.004572882578820118
+   },
+   "domain_log_mase": {
+    "econ_fin": -0.0104,
+    "energy": 0.013,
+    "healthcare": 0.0059,
+    "nature": -0.0026,
+    "sales": -0.0078,
+    "transport": -0.0242,
+    "web_cloudops": 0.0048
+   },
+   "verdict": "INCONCLUSIVE"
+  },
+  {
+   "feature": "{\"v2_jumps.json\": {\"max_outliers\": 0.25, \"max_shifts\": 24.0, \"rate\": 1.0, \"size_max\": 5.0, \"size_min\": 0.5}}",
+   "arm_names": [
+    "j100sz05"
+   ],
+   "seeds": [
+    0
+   ],
+   "per_seed_gain": [
+    -0.0027768568498254633
+   ],
+   "per_seed_wins": [
+    "0/6"
+   ],
+   "stats": {
+    "n": 1,
+    "mean": -0.0027768568498254633,
+    "sd": null,
+    "t": null,
+    "min": -0.0027768568498254633,
+    "max": -0.0027768568498254633,
+    "all_pos": false,
+    "all_neg": true
+   },
+   "horizon_means": {
+    "64": 0.0063079535956389226,
+    "256": -0.0050934250952833215,
+    "720": -0.009578559591481538
+   },
+   "domain_log_mase": {
+    "econ_fin": -0.0057,
+    "energy": 0.0118,
+    "healthcare": 0.0133,
+    "nature": 0.0073,
+    "sales": 0.0082,
+    "transport": -0.0209,
+    "web_cloudops": 0.0055
+   },
+   "verdict": "INCONCLUSIVE"
+  }
+ ],
+ "excluded": [
+  [
+   "grid_gpu2@20261031T021943Z",
+   "invalid: equal_steps"
+  ],
+  [
+   "grid_gpu2s1@20261031T021943Z",
+   "invalid: equal_steps"
+  ],
+  [
+   "grid_gpu4@20261031T021943Z:jcombo",
+   "multi-feature (3 switches differ)"
+  ],
+  [
+   "grid_gpu4@20261031T021943Z:jsz05dr60",
+   "multi-feature (2 switches differ)"
+  ],
+  [
+   "grid_gpu4@20261031T021943Z:jsz05sing",
+   "multi-feature (2 switches differ)"
+  ]
+ ]
+}
