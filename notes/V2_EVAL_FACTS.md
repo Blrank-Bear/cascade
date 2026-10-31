@@ -417,3 +417,9 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **None meets the 1% LCB bar.** No current variant is a submittable improvement over the king's code.
 - **The CPU proxy (h=64 only) over-rewarded hold precision.** Its h=256 run did agree that the gains shrink with horizon.
 - **Next seed-1 grid** (`grid_gpu4s1`): base, jsz05dr60 (replication), dr60only, j30sz05dr60, jsz025dr60.
+
+## Benchmark gate risk (2026-10-31)
+- **Setup:** upstream `evaluate_bench_gate` (v2 rule) on jsz05dr60 vs base, grid 4 seed-0 checkpoints, GIFT-Eval / BOOM / TIME.
+- **Ratios are fine:** avg 0.989, worst LCB 0.991.
+- **It fails on task win rate:** **0.448 < 0.5** (GIFT 0.41, TIME 0.38, BOOM 0.55). The hold-oriented corpus changes win BOOM tasks but lose most GIFT/TIME tasks.
+- **Consequence:** feature evaluation must include the bench gate, and FEV must be set up for the real 4-suite rule.

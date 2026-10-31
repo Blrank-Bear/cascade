@@ -1,0 +1,70 @@
+{
+ "rule": "avg_noninf_winrate",
+ "full": {
+  "computed": false,
+  "passed": null,
+  "reason": "required public benchmarks not pairable: ['fev']",
+  "suite_ucb": {},
+  "suite_n": {},
+  "king_score": 0.8167883565202845,
+  "chal_score": 0.8139049116233276,
+  "rule": "avg_noninf_winrate",
+  "suites": {},
+  "avg_ratio": NaN,
+  "worst_lcb": NaN,
+  "win_rate": NaN,
+  "tolerance": 0.01,
+  "min_win_rate": 0.5
+ },
+ "partial_without_missing_suites": {
+  "computed": true,
+  "passed": false,
+  "reason": "win rate 0.4482 < 0.5000",
+  "suite_ucb": {
+   "gift": 0.009083223026952128,
+   "boom": 0.03419014064051745,
+   "time": 0.010235910688049483
+  },
+  "suite_n": {
+   "gift": 97,
+   "boom": 7371,
+   "time": 98
+  },
+  "king_score": 0.8167883565202845,
+  "chal_score": 0.8139049116233276,
+  "rule": "avg_noninf_winrate",
+  "suites": {
+   "gift": {
+    "n": 97,
+    "masked": 0,
+    "ratio": 0.9992125450534555,
+    "ratio_lcb": 0.9909167769730479,
+    "win_rate": 0.41237113402061853
+   },
+   "boom": {
+    "n": 7371,
+    "masked": 42,
+    "ratio": 0.970403223780953,
+    "ratio_lcb": 0.9658098593594826,
+    "win_rate": 0.5547415547415547
+   },
+   "time": {
+    "n": 98,
+    "masked": 0,
+    "ratio": 0.996819022567406,
+    "ratio_lcb": 0.9897640893119505,
+    "win_rate": 0.37755102040816324
+   }
+  },
+  "avg_ratio": 0.988724908417601,
+  "worst_lcb": 0.9909167769730479,
+  "win_rate": 0.44822123639011213,
+  "tolerance": 0.01,
+  "min_win_rate": 0.5,
+  "partial_suites": [
+   "gift",
+   "boom",
+   "time"
+  ]
+ }
+}

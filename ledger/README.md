@@ -17,3 +17,14 @@ Every performance measurement of our code is recorded here and analysed feature 
 3. Snapshot the grid to the local machine (`tools/ledger/sync_grid.sh GRID`), ingest it (`tools/ledger/ingest_grid.py SNAPSHOT --grid GRID --seed S --hours H --config CFG`), then run `tools/ledger/analyze.py`.
 4. Only an **ADOPT-CANDIDATE** feature is turned on. It becomes the new reference, and the next feature is tested on top of it.
 5. A REJECT stays off. INCONCLUSIVE needs more seeds.
+
+## Benchmark gate (v2, enforced on chain)
+- `tools/ledger/compare_bench.py ARM.json REF.json` gives aggregate and per-task ratios and win rates per suite.
+- `tools/ledger/bench_gate_check.py ARM.json REF.json` runs **upstream's own** `evaluate_bench_gate` (rule `avg_noninf_winrate`).
+  - The real gate needs all four suites, FEV included. Without FEV it reports "not computable", so the script also runs the same rule on the suites present.
+- **Adoption also requires passing the gate.** A feature that wins the private pool can still be blocked if its suite-equal task win rate falls below 0.5.
+
+### Result: jsz05dr60 vs base (grid 4 checkpoints, seed 0, 396 steps; multi-feature arm, gate risk only)
+- **Aggregate ratios are slightly better:** GIFT 0.999, BOOM 0.970, TIME 0.997. Worst ratio LCB 0.991.
+- **Task win rate fails the gate:** GIFT 0.41, BOOM 0.55, TIME 0.38, so 0.448 < 0.5 on 3 suites.
+- **FEV is not run yet,** so the real 4-suite gate is uncomputable.
