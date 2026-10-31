@@ -1,6 +1,46 @@
 {
  "results": [
   {
+   "feature": "{\"v2_dock.json\": {\"replace_rate\": 0.6}}",
+   "arm_names": [
+    "dr60only"
+   ],
+   "seeds": [
+    1
+   ],
+   "per_seed_gain": [
+    0.002853577048549124
+   ],
+   "per_seed_wins": [
+    "0/6"
+   ],
+   "stats": {
+    "n": 1,
+    "mean": 0.002853577048549124,
+    "sd": null,
+    "t": null,
+    "min": 0.002853577048549124,
+    "max": 0.002853577048549124,
+    "all_pos": true,
+    "all_neg": false
+   },
+   "horizon_means": {
+    "64": 0.0019406550551060494,
+    "256": 0.006340394619486925,
+    "720": 0.00024239458887279284
+   },
+   "domain_log_mase": {
+    "econ_fin": -0.0167,
+    "energy": 0.0011,
+    "healthcare": -0.0053,
+    "nature": 0.0021,
+    "sales": 0.0074,
+    "transport": 0.0044,
+    "web_cloudops": 0.0031
+   },
+   "verdict": "INCONCLUSIVE"
+  },
+  {
    "feature": "{\"v2_jumps.json\": {\"max_outliers\": 0.25, \"max_shifts\": 24.0, \"rate\": 1.0, \"size_max\": 2.5, \"size_min\": 0.25}}",
    "arm_names": [
     "jsz025"
@@ -100,6 +140,18 @@
   ],
   [
    "grid_gpu4@20261031T021943Z:jsz05sing",
+   "multi-feature (2 switches differ)"
+  ],
+  [
+   "grid_gpu4s1@20261031T025733Z:j30sz05dr60",
+   "multi-feature (2 switches differ)"
+  ],
+  [
+   "grid_gpu4s1@20261031T025733Z:jsz025dr60",
+   "multi-feature (2 switches differ)"
+  ],
+  [
+   "grid_gpu4s1@20261031T025733Z:jsz05dr60",
    "multi-feature (2 switches differ)"
   ]
  ]
