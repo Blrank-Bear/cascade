@@ -1,0 +1,119 @@
+{
+ "rule": "avg_noninf_winrate",
+ "full": {
+  "computed": true,
+  "passed": false,
+  "reason": "win rate 0.4592 < 0.5000",
+  "suite_ucb": {
+   "gift": 0.009623917498082757,
+   "boom": 0.034273043642177176,
+   "time": 0.01055110112896407,
+   "fev": 0.015995490941052928
+  },
+  "suite_n": {
+   "gift": 97,
+   "boom": 7371,
+   "time": 98,
+   "fev": 65
+  },
+  "king_score": 0.8167883565202845,
+  "chal_score": 0.8139049116233276,
+  "rule": "avg_noninf_winrate",
+  "suites": {
+   "gift": {
+    "n": 97,
+    "masked": 0,
+    "ratio": 0.9992125450534555,
+    "ratio_lcb": 0.9903760825019172,
+    "win_rate": 0.41237113402061853
+   },
+   "boom": {
+    "n": 7371,
+    "masked": 42,
+    "ratio": 0.970403223780953,
+    "ratio_lcb": 0.9657269563578228,
+    "win_rate": 0.5547415547415547
+   },
+   "time": {
+    "n": 98,
+    "masked": 0,
+    "ratio": 0.996819022567406,
+    "ratio_lcb": 0.9894488988710359,
+    "win_rate": 0.37755102040816324
+   },
+   "fev": {
+    "n": 65,
+    "masked": 0,
+    "ratio": 0.996653418902922,
+    "ratio_lcb": 0.9840045090589471,
+    "win_rate": 0.49230769230769234
+   }
+  },
+  "avg_ratio": 0.9907011033178961,
+  "worst_lcb": 0.9903760825019172,
+  "win_rate": 0.4592428503695072,
+  "tolerance": 0.01,
+  "min_win_rate": 0.5
+ },
+ "partial_without_missing_suites": {
+  "computed": true,
+  "passed": false,
+  "reason": "win rate 0.4592 < 0.5000",
+  "suite_ucb": {
+   "gift": 0.009623917498082757,
+   "boom": 0.034273043642177176,
+   "time": 0.01055110112896407,
+   "fev": 0.015995490941052928
+  },
+  "suite_n": {
+   "gift": 97,
+   "boom": 7371,
+   "time": 98,
+   "fev": 65
+  },
+  "king_score": 0.8167883565202845,
+  "chal_score": 0.8139049116233276,
+  "rule": "avg_noninf_winrate",
+  "suites": {
+   "gift": {
+    "n": 97,
+    "masked": 0,
+    "ratio": 0.9992125450534555,
+    "ratio_lcb": 0.9903760825019172,
+    "win_rate": 0.41237113402061853
+   },
+   "boom": {
+    "n": 7371,
+    "masked": 42,
+    "ratio": 0.970403223780953,
+    "ratio_lcb": 0.9657269563578228,
+    "win_rate": 0.5547415547415547
+   },
+   "time": {
+    "n": 98,
+    "masked": 0,
+    "ratio": 0.996819022567406,
+    "ratio_lcb": 0.9894488988710359,
+    "win_rate": 0.37755102040816324
+   },
+   "fev": {
+    "n": 65,
+    "masked": 0,
+    "ratio": 0.996653418902922,
+    "ratio_lcb": 0.9840045090589471,
+    "win_rate": 0.49230769230769234
+   }
+  },
+  "avg_ratio": 0.9907011033178961,
+  "worst_lcb": 0.9903760825019172,
+  "win_rate": 0.4592428503695072,
+  "tolerance": 0.01,
+  "min_win_rate": 0.5,
+  "partial_suites": [
+   "gift",
+   "boom",
+   "time",
+   "fev"
+  ]
+ }
+}

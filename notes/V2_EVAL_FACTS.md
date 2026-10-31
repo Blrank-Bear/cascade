@@ -423,3 +423,4 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **Ratios are fine:** avg 0.989, worst LCB 0.991.
 - **It fails on task win rate:** **0.448 < 0.5** (GIFT 0.41, TIME 0.38, BOOM 0.55). The hold-oriented corpus changes win BOOM tasks but lose most GIFT/TIME tasks.
 - **Consequence:** feature evaluation must include the bench gate, and FEV must be set up for the real 4-suite rule.
+- **4-suite gate (diagnostic, FEV 65 univariate tasks):** jsz05dr60 vs base **fails, win rate 0.459** (GIFT 0.41, BOOM 0.56, TIME 0.38, FEV 0.49). Average ratio 0.991 is better than base, but the gain is narrow: it wins BOOM-like ops tasks and loses most GIFT/TIME tasks.

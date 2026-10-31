@@ -28,3 +28,7 @@ Every performance measurement of our code is recorded here and analysed feature 
 - **Aggregate ratios are slightly better:** GIFT 0.999, BOOM 0.970, TIME 0.997. Worst ratio LCB 0.991.
 - **Task win rate fails the gate:** GIFT 0.41, BOOM 0.55, TIME 0.38, so 0.448 < 0.5 on 3 suites.
 - **FEV is not run yet,** so the real 4-suite gate is uncomputable.
+- **4-suite gate (diagnostic):** FEV run on CPU (unpinned fev-bench list; 35/100 multivariate tasks are skipped by upstream's univariate adapter, so the report is "partial"). Treating the 65 scored tasks as the suite, upstream's gate **fails: win rate 0.459 < 0.5**.
+  - Win rates: GIFT 0.41, BOOM 0.555, TIME 0.378, FEV 0.492.
+  - avg ratio 0.991; worst LCB 0.990 (ratios fine).
+  - Lesson: a pool gain is not enough. Features must win more tasks than they lose across GIFT/TIME/FEV, not just improve averages.
