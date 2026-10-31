@@ -143,7 +143,7 @@ footer { max-width:1440px; margin: 0 auto; padding: 4px 20px 28px; color: var(--
     </div>
   </div>
   <nav class="sections" id="nav">
-    <a href="#overview" class="on">Overview</a><a href="#code">Code updates</a><a href="#board">Leaderboard</a><a href="#king">King vs ours</a><a href="#problem">Problem in use</a><a href="#gpu">GPU infrastructure</a><a href="#audit">Audit log</a>
+    <a href="#overview" class="on">Overview</a><a href="#code">Code updates</a><a href="#board">Leaderboard</a><a href="#v2subs">v2 submissions</a><a href="#king">King vs ours</a><a href="#problem">Problem in use</a><a href="#gpu">GPU infrastructure</a><a href="#audit">Audit log</a>
   </nav>
 </header>
 
@@ -176,6 +176,16 @@ footer { max-width:1440px; margin: 0 auto; padding: 4px 20px 28px; color: var(--
       <div class="right"><input class="iconbtn" id="boardQ" placeholder="Search uid / hotkey" style="width:200px;cursor:text" aria-label="Search leaderboard">
         <div class="seg" id="boardSeg"><button data-f="weighted" class="on">Rewarded</button><button data-f="duel">Duelled</button><button data-f="mine">Mine</button><button data-f="all">All</button></div></div></div>
     <div class="pb"><div class="scroll" style="max-height:560px"><table class="tbl" id="boardTbl"></table></div></div>
+  </section>
+
+  <section class="panel" id="v2subs">
+    <div class="ph"><h2>v2 submissions</h2><span class="sub" id="v2Sub">Live from <span class="mono">cascade status</span> (read-only) · refreshed every 3 min</span>
+      <div class="right"><div class="seg" id="v2Seg"><button data-f="all" class="on">All</button><button data-f="active">Active</button><button data-f="stuck">Stuck / failed</button></div></div></div>
+    <div class="pb">
+      <div class="grid3" id="v2Cards" style="margin-bottom:14px"></div>
+      <div class="chips" id="v2Chips" style="margin-bottom:14px"></div>
+      <div class="scroll" style="max-height:560px"><table class="tbl" id="v2Tbl"></table></div>
+    </div>
   </section>
 
   <section class="panel" id="king">
@@ -276,7 +286,7 @@ $("gridSel").onchange = (e) => { gridIdx = +e.target.value; renderOurs(); };
 /* ── section nav highlight ── */
 const navLinks = [...document.querySelectorAll("nav.sections a")];
 const io = new IntersectionObserver((ents) => ents.forEach((en) => { if (en.isIntersecting) navLinks.forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + en.target.id)); }), { rootMargin: "-35% 0px -60% 0px" });
-["overview", "code", "board", "king", "problem", "gpu", "audit"].forEach((id) => io.observe($(id)));
+["overview", "code", "board", "v2subs", "king", "problem", "gpu", "audit"].forEach((id) => io.observe($(id)));
 
 /* ── polling ── */
 async function poll() {
@@ -394,7 +404,43 @@ function renderBoard() {
     }).join("") : `<tr><td colspan="12" class="empty">${boardFilter === "mine" ? "No hotkeys marked as yours. Add your public hotkey address to .claude-work/session/dashboard_local.json → my_hotkeys." : "No rows match."}</td></tr>`);
 }
 
+/* ── v2 submissions (section "v2live", from cascade status) ── */
+let v2Filter = "all";
+$("v2Seg").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; v2Filter = b.dataset.f;
+  [...$("v2Seg").children].forEach((x) => x.classList.toggle("on", x === b)); renderV2(); };
+const V2_STAGE = { ready: "good", training: "good", done: "good", generating: "warn", hashing: "warn", uploading: "warn", preparing_data: "warn",
+  queued: "mute", waiting_launch: "mute", infra_fault: "bad", failed: "bad", withdrawn: "mute" };
+const v2pill = (s) => s ? `<span class="pill ${V2_STAGE[s] || "mute"}">${esc(s)}</span>` : `<span class="muted">—</span>`;
+function renderV2() {
+  const v = S?.sections.v2live;
+  if (!v) { $("v2Tbl").innerHTML = `<tr><td class="empty">${esc(S?.errors.v2live || "waiting for cascade status (first fetch takes ~1 min)…")}</td></tr>`; return; }
+  const king = v.king?.pointer;
+  const card = (k, val, sub) => `<div class="card"><h3>${k}</h3><div class="num" style="font-size:18px;font-weight:700;word-break:break-all">${val}</div><div class="muted" style="font-size:12px;margin-top:4px">${sub}</div></div>`;
+  $("v2Cards").innerHTML =
+    card("v2 era", `${esc(v.golive?.state || "—")} · era ${esc(v.king?.era ?? "—")}`, `live from block ${esc(v.golive?.from_block ?? "—")} · admissions ${esc(v.golive?.admission_state || "—")}`) +
+    card("v2 king", king ? `<span class="pill king">crowned</span> ${esc(short(king, 10))}` : `<span class="pill mute">none yet</span>`, `mode ${esc(v.warm_start_mode || "—")} · ${esc(v.model?.name || "")}`) +
+    card("Round status", v.ready_for_training ? `<span class="pill good">ready for training</span>` : `<span class="pill warn">generating corpora</span>`, `status as of ${esc((v.as_of || "").replace("T", " ").slice(0, 16))} UTC · block ${v.block}`);
+  const chips = Object.entries(v.gen_counts || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="chip">generation ${v2pill(k)} ${n}</span>`).join("") +
+    Object.entries(v.queue_counts || {}).filter(([k]) => !k.startsWith("done") ).map(([k, n]) => `<span class="chip">queue ${esc(k)} · ${n}</span>`).join("");
+  const rcpt = S.sections.chain?.updated_at, rAge = rcpt ? (Date.now() - Date.parse(rcpt)) / 3600e3 : null;
+  const staleNote = rAge != null && rAge > 6 ? `<span class="chip"><span class="pill warn">public receipts index stale</span> last update ${rAge.toFixed(0)} h ago — v1 rounds only</span>` : "";
+  $("v2Chips").innerHTML = staleNote + chips;
+  let rows = v.submissions || [];
+  if (v2Filter === "active") rows = rows.filter((r) => ["in_flight", "queued"].includes(r.queue_status) && r.gen_stage !== "infra_fault");
+  if (v2Filter === "stuck") rows = rows.filter((r) => r.gen_stage === "infra_fault" || r.queue_status === "failed" || r.last_error);
+  $("v2Sub").innerHTML = `${(v.submissions || []).length} on-chain Lane A submissions this era · live from <span class="mono">cascade status</span> · refreshed every 3 min`;
+  $("v2Tbl").innerHTML = `<tr><th class="r">UID</th><th>Hotkey</th><th>Committed (UTC)</th><th>Queue</th><th>Generation</th><th class="r">Progress</th><th>Last error</th><th>Generator</th></tr>` +
+    (rows.length ? rows.map((r) => {
+      const prog = r.gen_percent != null ? `${Math.round(r.gen_percent)}%` : "—";
+      return `<tr><td class="r num">${r.uid}</td><td class="mono" title="${esc(r.hotkey)}">${esc(short(r.hotkey, 6))}</td>
+        <td class="muted">${esc((r.committed_at || "").replace("T", " ").slice(5, 16))}</td>
+        <td>${v2pill(r.queue_phase || r.queue_status)}</td><td>${v2pill(r.gen_stage)}</td><td class="r num">${prog}</td>
+        <td class="muted" style="font-size:12px">${esc(r.last_error || "")}</td><td class="mono muted">${esc(r.gen_ref)}</td></tr>`; }).join("")
+      : `<tr><td colspan="8" class="empty">No submissions match this filter.</td></tr>`);
+}
+
 function renderAll() {
+  renderV2();
   renderClock(); renderKpis(); renderCode(); renderBoard(); renderRounds(); renderOurs(); renderProblem(); renderGpu(); renderEvents(); renderFoot();
 }
 

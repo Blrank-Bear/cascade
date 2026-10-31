@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 
 STAGE_FILES = ("v2_mix.json", "v2_groups.json", "v2_history.json", "v2_pool.json", "v2_pool2.json",
-               "v2_flat.json", "v2_quant.json", "v2_jumps.json")
+               "v2_flat.json", "v2_quant.json", "v2_jumps.json", "v2_holds.json", "v2_dock.json", "v2_safe.json")
 SYNC_FILES = ("generator/generator.py", "generator/config.json", "tools/duel/duel.py", "tools/duel/grid.py",
               "tools/duel/grid_logged.py", "tools/duel/make_v2_cfg.py", "tools/dashboard/collect.py",
               "tools/dashboard/serve.py")
