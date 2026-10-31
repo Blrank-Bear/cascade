@@ -1,46 +1,6 @@
 {
  "results": [
   {
-   "feature": "{\"v2_dock.json\": {\"replace_rate\": 0.6}}",
-   "arm_names": [
-    "dr60only"
-   ],
-   "seeds": [
-    1
-   ],
-   "per_seed_gain": [
-    0.002853577048549124
-   ],
-   "per_seed_wins": [
-    "0/6"
-   ],
-   "stats": {
-    "n": 1,
-    "mean": 0.002853577048549124,
-    "sd": null,
-    "t": null,
-    "min": 0.002853577048549124,
-    "max": 0.002853577048549124,
-    "all_pos": true,
-    "all_neg": false
-   },
-   "horizon_means": {
-    "64": 0.0019406550551060494,
-    "256": 0.006340394619486925,
-    "720": 0.00024239458887279284
-   },
-   "domain_log_mase": {
-    "econ_fin": -0.0167,
-    "energy": 0.0011,
-    "healthcare": -0.0053,
-    "nature": 0.0021,
-    "sales": 0.0074,
-    "transport": 0.0044,
-    "web_cloudops": 0.0031
-   },
-   "verdict": "INCONCLUSIVE"
-  },
-  {
    "feature": "{\"v2_jumps.json\": {\"max_outliers\": 0.25, \"max_shifts\": 24.0, \"rate\": 1.0, \"size_max\": 2.5, \"size_min\": 0.25}}",
    "arm_names": [
     "jsz025"
@@ -77,6 +37,49 @@
     "sales": -0.0078,
     "transport": -0.0242,
     "web_cloudops": 0.0048
+   },
+   "verdict": "INCONCLUSIVE"
+  },
+  {
+   "feature": "{\"v2_dock.json\": {\"replace_rate\": 0.6}}",
+   "arm_names": [
+    "dr60only"
+   ],
+   "seeds": [
+    0,
+    1
+   ],
+   "per_seed_gain": [
+    -0.001491259123529487,
+    0.002853577048549124
+   ],
+   "per_seed_wins": [
+    "0/6",
+    "0/6"
+   ],
+   "stats": {
+    "n": 2,
+    "mean": 0.0006811589625098184,
+    "sd": 0.0030722631204213873,
+    "t": 0.3135487440871426,
+    "min": -0.001491259123529487,
+    "max": 0.002853577048549124,
+    "all_pos": false,
+    "all_neg": false
+   },
+   "horizon_means": {
+    "64": 0.002438893436312096,
+    "256": 0.0017888997659354926,
+    "720": -0.0021992178478558006
+   },
+   "domain_log_mase": {
+    "econ_fin": -0.0033,
+    "energy": -0.0002999999999999999,
+    "healthcare": -0.00285,
+    "nature": 0.00345,
+    "sales": 0.005,
+    "transport": -0.0032999999999999995,
+    "web_cloudops": -0.00285
    },
    "verdict": "INCONCLUSIVE"
   },
