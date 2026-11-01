@@ -157,6 +157,46 @@
    "verdict": "INCONCLUSIVE"
   },
   {
+   "feature": "{\"v2_quant.json\": {\"rate\": 0.75}}",
+   "arm_names": [
+    "q75"
+   ],
+   "seeds": [
+    0
+   ],
+   "per_seed_gain": [
+    0.0012603331454942672
+   ],
+   "per_seed_wins": [
+    "0/6"
+   ],
+   "stats": {
+    "n": 1,
+    "mean": 0.0012603331454942672,
+    "sd": null,
+    "t": null,
+    "min": 0.0012603331454942672,
+    "max": 0.0012603331454942672,
+    "all_pos": true,
+    "all_neg": false
+   },
+   "horizon_means": {
+    "64": -0.0007434168290026051,
+    "256": 0.0018775813254691782,
+    "720": 0.002618472726690437
+   },
+   "domain_log_mase": {
+    "econ_fin": -0.0018,
+    "energy": 0.0,
+    "healthcare": -0.0092,
+    "nature": 0.0039,
+    "sales": 0.0091,
+    "transport": 0.0012,
+    "web_cloudops": -0.0143
+   },
+   "verdict": "INCONCLUSIVE"
+  },
+  {
    "feature": "{\"v2_pool2.json\": {\"rate\": 0.25}}",
    "arm_names": [
     "p2_25"
@@ -245,6 +285,46 @@
     "sales": 0.0056,
     "transport": -0.0007333333333333329,
     "web_cloudops": -0.0027333333333333337
+   },
+   "verdict": "INCONCLUSIVE"
+  },
+  {
+   "feature": "{\"v2_quant.json\": {\"rate\": 1.0}}",
+   "arm_names": [
+    "q100"
+   ],
+   "seeds": [
+    0
+   ],
+   "per_seed_gain": [
+    -0.0011208134406308263
+   ],
+   "per_seed_wins": [
+    "0/6"
+   ],
+   "stats": {
+    "n": 1,
+    "mean": -0.0011208134406308263,
+    "sd": null,
+    "t": null,
+    "min": -0.0011208134406308263,
+    "max": -0.0011208134406308263,
+    "all_pos": false,
+    "all_neg": true
+   },
+   "horizon_means": {
+    "64": -0.0029667556491869734,
+    "256": 0.0012344219683816046,
+    "720": -0.0016429487979527726
+   },
+   "domain_log_mase": {
+    "econ_fin": 0.0035,
+    "energy": -0.0016,
+    "healthcare": -0.0074,
+    "nature": 0.0043,
+    "sales": 0.0136,
+    "transport": 0.005,
+    "web_cloudops": -0.0092
    },
    "verdict": "INCONCLUSIVE"
   },
