@@ -1,0 +1,256 @@
+{
+ "windows": 35964,
+ "total": -54182.09813133149,
+ "top": [
+  {
+   "source": "gbfs_bird_bird_ottawa_ottawa",
+   "domain": "transport",
+   "n": 36,
+   "mean_log_mase": 9.461053467569776,
+   "mean_log_wql": -1.2380764601178742,
+   "mase_gt1_share": 0.6944444444444444,
+   "log_error_mass": 299.74140164862206,
+   "share_of_total": -0.005532111379704817
+  },
+  {
+   "source": "citybikes_youbike_taipei_station_status",
+   "domain": "transport",
+   "n": 42,
+   "mean_log_mase": 5.30734207744241,
+   "mean_log_wql": -1.959334093171554,
+   "mase_gt1_share": 0.42857142857142855,
+   "log_error_mass": 140.61633533937595,
+   "share_of_total": -0.0025952545248162464
+  },
+  {
+   "source": "gbfs_publicbikesystem_biki_honolulu_hi",
+   "domain": "transport",
+   "n": 30,
+   "mean_log_mase": 4.883564044073818,
+   "mean_log_wql": -0.20420266002581677,
+   "mase_gt1_share": 0.4666666666666667,
+   "log_error_mass": 140.38084152144003,
+   "share_of_total": -0.002590908184861579
+  },
+  {
+   "source": "brla_dakq_4sda_daily_volume",
+   "domain": "healthcare",
+   "n": 57,
+   "mean_log_mase": 2.553107958396108,
+   "mean_log_wql": -0.3836883458620932,
+   "mase_gt1_share": 0.9649122807017544,
+   "log_error_mass": 123.65691791443885,
+   "share_of_total": -0.002282246760077618
+  },
+  {
+   "source": "gbfs_gouv_pony_basque_country_basque_country",
+   "domain": "transport",
+   "n": 24,
+   "mean_log_mase": 4.7244496743403355,
+   "mean_log_wql": 0.27337109338916016,
+   "mase_gt1_share": 0.8333333333333334,
+   "log_error_mass": 118.30747186517294,
+   "share_of_total": -0.0021835158833902767
+  },
+  {
+   "source": "gbfs_mobidata_carvelo_ecargo_bike_sharing_switzerland",
+   "domain": "transport",
+   "n": 42,
+   "mean_log_mase": 4.939545378511346,
+   "mean_log_wql": -2.5164231891382465,
+   "mase_gt1_share": 0.47619047619047616,
+   "log_error_mass": 101.77113195367016,
+   "share_of_total": -0.0018783165559035394
+  },
+  {
+   "source": "delaware_2655_qn8j_daily_volume",
+   "domain": "sales",
+   "n": 18,
+   "mean_log_mase": 4.201266740495763,
+   "mean_log_wql": -0.018120575413668717,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 75.2966309714777,
+   "share_of_total": -0.001389695740260314
+  },
+  {
+   "source": "gbfs_gouv_pony_beauvais_beauvais",
+   "domain": "transport",
+   "n": 36,
+   "mean_log_mase": 2.3602207452876196,
+   "mean_log_wql": -0.5548147914272531,
+   "mase_gt1_share": 0.6388888888888888,
+   "log_error_mass": 74.98128058466375,
+   "share_of_total": -0.0013838755450724207
+  },
+  {
+   "source": "gbfs_primelayer_bora_viseu_dao_lafoes",
+   "domain": "transport",
+   "n": 36,
+   "mean_log_mase": 6.603726607590277,
+   "mean_log_wql": -6.098552432410322,
+   "mase_gt1_share": 0.5833333333333334,
+   "log_error_mass": 73.07324219817124,
+   "share_of_total": -0.001348660253448467
+  },
+  {
+   "source": "cincinnati_oh_uhjb_xac9_daily_volume",
+   "domain": "sales",
+   "n": 15,
+   "mean_log_mase": 4.85012616755057,
+   "mean_log_wql": -0.008415144918875676,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 72.62566533947542,
+   "share_of_total": -0.0013403996494089014
+  },
+  {
+   "source": "cincinnati_oh_94uh_66xv_daily_volume",
+   "domain": "sales",
+   "n": 12,
+   "mean_log_mase": 5.031717650376004,
+   "mean_log_wql": -0.013842651566856252,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 60.21449998570977,
+   "share_of_total": -0.001111335700580594
+  },
+  {
+   "source": "cityofnewyork_jz4z_kudi_daily_volume",
+   "domain": "sales",
+   "n": 15,
+   "mean_log_mase": 3.9521961108775647,
+   "mean_log_wql": -0.03819657353341346,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 58.70999306016227,
+   "share_of_total": -0.0010835680987815507
+  },
+  {
+   "source": "gbfs_gouv_pony_angers_angers",
+   "domain": "transport",
+   "n": 18,
+   "mean_log_mase": 2.3841754886832525,
+   "mean_log_wql": 0.8401490284174559,
+   "mase_gt1_share": 0.2222222222222222,
+   "log_error_mass": 55.517394222560384,
+   "share_of_total": -0.0010246445991809376
+  },
+  {
+   "source": "austintexas_ji6n_8jff_daily_volume",
+   "domain": "sales",
+   "n": 15,
+   "mean_log_mase": 3.6371913548740773,
+   "mean_log_wql": -0.02635360135876689,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 54.16256630272966,
+   "share_of_total": -0.0009996395150930757
+  },
+  {
+   "source": "cincinnati_oh_5f3f_hgt9_daily_volume",
+   "domain": "healthcare",
+   "n": 9,
+   "mean_log_mase": 5.960301303241214,
+   "mean_log_wql": -0.026447034051574662,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 53.404688422706755,
+   "share_of_total": -0.0009856519083712783
+  },
+  {
+   "source": "cincinnati_oh_vnsz_a3wp_daily_volume",
+   "domain": "healthcare",
+   "n": 15,
+   "mean_log_mase": 3.6817690326973733,
+   "mean_log_wql": -0.3183324123197813,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 50.45154930566388,
+   "share_of_total": -0.0009311479445364931
+  },
+  {
+   "source": "coronaca_2agx_camz_daily_volume",
+   "domain": "sales",
+   "n": 12,
+   "mean_log_mase": 4.118203059641406,
+   "mean_log_wql": -0.01330921809536971,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 49.25872609855244,
+   "share_of_total": -0.000909132864865341
+  },
+  {
+   "source": "cityofnewyork_tb8q_a3ar_daily_volume",
+   "domain": "sales",
+   "n": 18,
+   "mean_log_mase": 2.781833742053132,
+   "mean_log_wql": -0.07092981302152823,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 48.79627072256886,
+   "share_of_total": -0.0009005976587376153
+  },
+  {
+   "source": "npm_downloads_per_pkg",
+   "domain": "sales",
+   "n": 45,
+   "mean_log_mase": 2.068739920395166,
+   "mean_log_wql": -0.9963962771900726,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 48.2554639442292,
+   "share_of_total": -0.0008906163771521587
+  },
+  {
+   "source": "gbfs_whitebikes_white_bikes_bratislava",
+   "domain": "transport",
+   "n": 12,
+   "mean_log_mase": 5.260989518521137,
+   "mean_log_wql": -2.725449898099162,
+   "mase_gt1_share": 0.6666666666666666,
+   "log_error_mass": 46.779174833658665,
+   "share_of_total": -0.0008633695712608074
+  },
+  {
+   "source": "wa_bzff_4fmt_daily_volume",
+   "domain": "sales",
+   "n": 9,
+   "mean_log_mase": 4.688738217807208,
+   "mean_log_wql": -0.010937148404595849,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 42.1002096246235,
+   "share_of_total": -0.0007770132770159101
+  },
+  {
+   "source": "cityofchicago_qhb4_qx8k_daily_volume",
+   "domain": "sales",
+   "n": 12,
+   "mean_log_mase": 3.3785725939803863,
+   "mean_log_wql": -0.034397666913942006,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 40.13009912479733,
+   "share_of_total": -0.0007406523650584064
+  },
+  {
+   "source": "nola_u6yx_v2tw_daily_volume",
+   "domain": "sales",
+   "n": 12,
+   "mean_log_mase": 3.3649515923648425,
+   "mean_log_wql": -0.053331144943413115,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 39.73944536905715,
+   "share_of_total": -0.0007334423497726698
+  },
+  {
+   "source": "delaware_mv7j_tx3u_daily_volume",
+   "domain": "sales",
+   "n": 15,
+   "mean_log_mase": 2.724971498504174,
+   "mean_log_wql": -0.09246478674929733,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 39.48760067632315,
+   "share_of_total": -0.0007287942334866678
+  },
+  {
+   "source": "wa_m8qx_ubtq_daily_volume",
+   "domain": "sales",
+   "n": 9,
+   "mean_log_mase": 4.308792497116132,
+   "mean_log_wql": -0.04774113304147332,
+   "mase_gt1_share": 1.0,
+   "log_error_mass": 38.34946227667192,
+   "share_of_total": -0.0007077884319598885
+  }
+ ]
+}

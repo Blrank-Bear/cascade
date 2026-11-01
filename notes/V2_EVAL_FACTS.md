@@ -424,3 +424,15 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 - **It fails on task win rate:** **0.448 < 0.5** (GIFT 0.41, TIME 0.38, BOOM 0.55). The hold-oriented corpus changes win BOOM tasks but lose most GIFT/TIME tasks.
 - **Consequence:** feature evaluation must include the bench gate, and FEV must be set up for the real 4-suite rule.
 - **4-suite gate (diagnostic, FEV 65 univariate tasks):** jsz05dr60 vs base **fails, win rate 0.459** (GIFT 0.41, BOOM 0.56, TIME 0.38, FEV 0.49). Average ratio 0.991 is better than base, but the gain is narrow: it wins BOOM-like ops tasks and loses most GIFT/TIME tasks.
+
+## Where the trained model's error mass is (base, seeds 0–2, 35,964 windows; `tools/ledger/error_sources.py`)
+- **Worst sources by log MASE:**
+  - GBFS / citybikes **bike-station status** (transport): mean log MASE +2.4 … +9.5.
+  - Socrata **"*_daily_volume"** open-data counts (sales, healthcare): log MASE +2.5 … +6; MASE > 1 on 100% of their windows.
+- **Daily-volume windows are unfixable by data:** every arm gives an identical MASE (delta 0.000). The history is constant and the target departs from it, so all models output the same forecast.
+- **Bike stations respond to data** (`tools/ledger/source_deltas.py`):
+  - jumps: Taipei −0.27, Swiss e-cargo −0.22, Ottawa −0.14, Basque −0.12 log MASE vs base;
+  - dock replace: e-cargo −0.36;
+  - Bratislava gets worse with every arm.
+  - Mean over the top-25 error sources: jumps −0.058, dock −0.035, quant +0.003, pool2 +0.017.
+- **The fixable error mass is "long constant stretch then movement" (bike stations).** Jumps target exactly this, which is why they help h=64.
