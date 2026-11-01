@@ -157,42 +157,45 @@
    "verdict": "INCONCLUSIVE"
   },
   {
-   "feature": "{\"v2_quant.json\": {\"rate\": 0.75}}",
+   "feature": "{\"v2_quant.json\": {\"rate\": 1.0}}",
    "arm_names": [
-    "q75"
+    "q100"
    ],
    "seeds": [
-    0
+    0,
+    1
    ],
    "per_seed_gain": [
-    0.0012603331454942672
+    -0.0011208134406308263,
+    0.003168367041296083
    ],
    "per_seed_wins": [
+    "0/6",
     "0/6"
    ],
    "stats": {
-    "n": 1,
-    "mean": 0.0012603331454942672,
-    "sd": null,
-    "t": null,
-    "min": 0.0012603331454942672,
-    "max": 0.0012603331454942672,
-    "all_pos": true,
+    "n": 2,
+    "mean": 0.0010237768003326284,
+    "sd": 0.0030329086045035015,
+    "t": 0.4773764147470418,
+    "min": -0.0011208134406308263,
+    "max": 0.003168367041296083,
+    "all_pos": false,
     "all_neg": false
    },
    "horizon_means": {
-    "64": -0.0007434168290026051,
-    "256": 0.0018775813254691782,
-    "720": 0.002618472726690437
+    "64": 0.0020604559253320585,
+    "256": 0.0012147288915889507,
+    "720": -0.00020593964466394618
    },
    "domain_log_mase": {
-    "econ_fin": -0.0018,
-    "energy": 0.0,
-    "healthcare": -0.0092,
-    "nature": 0.0039,
-    "sales": 0.0091,
-    "transport": 0.0012,
-    "web_cloudops": -0.0143
+    "econ_fin": -0.0026500000000000004,
+    "energy": -0.0007,
+    "healthcare": -0.0063,
+    "nature": -0.0018999999999999998,
+    "sales": 0.0048,
+    "transport": 0.00265,
+    "web_cloudops": -0.00575
    },
    "verdict": "INCONCLUSIVE"
   },
@@ -243,6 +246,49 @@
    "verdict": "INCONCLUSIVE"
   },
   {
+   "feature": "{\"v2_quant.json\": {\"rate\": 0.75}}",
+   "arm_names": [
+    "q75"
+   ],
+   "seeds": [
+    0,
+    1
+   ],
+   "per_seed_gain": [
+    0.0012603331454942672,
+    -0.003000904045803517
+   ],
+   "per_seed_wins": [
+    "0/6",
+    "0/6"
+   ],
+   "stats": {
+    "n": 2,
+    "mean": -0.000870285450154625,
+    "sd": 0.003013149714210981,
+    "t": -0.40846609145902746,
+    "min": -0.003000904045803517,
+    "max": 0.0012603331454942672,
+    "all_pos": false,
+    "all_neg": false
+   },
+   "horizon_means": {
+    "64": -0.0007120062766768497,
+    "256": -0.0015507392037756198,
+    "720": -0.00035812977694065027
+   },
+   "domain_log_mase": {
+    "econ_fin": 0.00025,
+    "energy": -0.00015,
+    "healthcare": -0.00285,
+    "nature": 0.00395,
+    "sales": 0.00645,
+    "transport": 0.0029,
+    "web_cloudops": -0.0097
+   },
+   "verdict": "INCONCLUSIVE"
+  },
+  {
    "feature": "{\"v2_dock.json\": {\"replace_rate\": 0.6}}",
    "arm_names": [
     "dr60only"
@@ -285,46 +331,6 @@
     "sales": 0.0056,
     "transport": -0.0007333333333333329,
     "web_cloudops": -0.0027333333333333337
-   },
-   "verdict": "INCONCLUSIVE"
-  },
-  {
-   "feature": "{\"v2_quant.json\": {\"rate\": 1.0}}",
-   "arm_names": [
-    "q100"
-   ],
-   "seeds": [
-    0
-   ],
-   "per_seed_gain": [
-    -0.0011208134406308263
-   ],
-   "per_seed_wins": [
-    "0/6"
-   ],
-   "stats": {
-    "n": 1,
-    "mean": -0.0011208134406308263,
-    "sd": null,
-    "t": null,
-    "min": -0.0011208134406308263,
-    "max": -0.0011208134406308263,
-    "all_pos": false,
-    "all_neg": true
-   },
-   "horizon_means": {
-    "64": -0.0029667556491869734,
-    "256": 0.0012344219683816046,
-    "720": -0.0016429487979527726
-   },
-   "domain_log_mase": {
-    "econ_fin": 0.0035,
-    "energy": -0.0016,
-    "healthcare": -0.0074,
-    "nature": 0.0043,
-    "sales": 0.0136,
-    "transport": 0.005,
-    "web_cloudops": -0.0092
    },
    "verdict": "INCONCLUSIVE"
   },
