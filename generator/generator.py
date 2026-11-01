@@ -32772,3 +32772,105 @@ class Generator(_V2DockReplaceParent):
         if self._v2dockr_on():
             rows = _v2dockr_rows(rows, self._v2pipe_seed, self._v2dock_cfg)
         return rows
+
+
+# ── v2 stall breaks: a stalled (exactly constant) stretch can restart ─────────
+# Error analysis (notes/V2_EVAL_FACTS.md): the largest fixable eval error is "long constant
+# stretch, then the series moves" (bike-station status). The jumps stage helps there but
+# perturbs every channel and hurts long horizons. This stage acts ONLY inside exact-constant
+# runs of at least `min_run` steps: on a `rate` fraction of king rows, each such run gets,
+# with probability `run_prob`, a level step at a random point inside it that carries through
+# the rest of the channel (both pieces stay exactly constant). Steps are sized in multiples
+# of the channel's typical non-zero step (log-uniform in [size_min, size_max]), rounded to
+# integers on integer channels; non-negative channels stay non-negative.
+# Runs first in the stage chain (before jumps / quantization). Optional `v2_stall.json`.
+_V2STALL_TAG = 0x7A2F000D
+_V2STALL_FILE = "v2_stall.json"
+_V2STALL_DEFAULTS = {"rate": 0.0, "min_run": 32, "run_prob": 0.5, "size_min": 1.0, "size_max": 10.0}
+
+
+def _v2stall_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2STALL_FILE
+    if not path.is_file():
+        return dict(_V2STALL_DEFAULTS)
+    return {**_V2STALL_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2stall_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2STALL_TAG], spawn_key=(i,)))
+
+
+def _v2stall_runs(ch: np.ndarray, min_run: int) -> list[tuple[int, int]]:
+    """[start, stop) of maximal exact-constant runs with length >= min_run."""
+    change = np.flatnonzero(np.diff(ch) != 0) + 1
+    bounds = np.concatenate(([0], change, [ch.size]))
+    return [(int(a), int(b)) for a, b in zip(bounds[:-1], bounds[1:]) if b - a >= min_run]
+
+
+def _v2stall_step(rng, step: float, integer: bool, cfg: dict) -> float:
+    size = _v2pool_log_uniform(rng, float(cfg["size_min"]), float(cfg["size_max"])) * step
+    if integer:
+        size = max(1.0, float(np.round(size)))
+    return float(rng.choice((-1.0, 1.0))) * size
+
+
+def _v2stall_channel(ch: np.ndarray, rng, cfg: dict) -> np.ndarray:
+    if ch.size < 2 * int(cfg["min_run"]) or not np.all(np.isfinite(ch)):
+        return ch
+    step = _v2quant_typical_step(ch)
+    if step <= 0.0:
+        return ch
+    runs = _v2stall_runs(ch, int(cfg["min_run"]))
+    if not runs:
+        return ch
+    integer, nonneg = _v2quant_is_integer(ch), bool(ch.min() >= 0.0)
+    y = np.array(ch, dtype=np.float64, copy=True)
+    for a, b in runs:
+        if rng.random() >= float(cfg["run_prob"]):
+            continue
+        _v2stall_break(y, a, b, rng, step, integer, nonneg, cfg)
+    return y
+
+
+def _v2stall_break(y: np.ndarray, a: int, b: int, rng, step: float, integer: bool, nonneg: bool, cfg: dict) -> None:
+    """Split the stall [a, b) at a random point into two exact levels; the channel rejoins its
+    own path at b (local, so breaks never accumulate). A step that would go negative on a
+    non-negative channel flips sign instead of being clipped."""
+    at = int(rng.integers(a + 1, b))
+    delta = _v2stall_step(rng, step, integer, cfg)
+    if nonneg and y[at] + delta < 0.0:
+        delta = -delta
+    y[at:b] = y[at] + delta
+
+
+def _v2stall_row(x, rng, cfg: dict):
+    if rng.random() >= float(cfg["rate"]):
+        return x
+    rows = _v2_as_rows(x)
+    return np.stack([_v2stall_channel(ch, rng, cfg) for ch in rows])
+
+
+def _v2stall_rows(rows, seed: int, cfg: dict) -> Iterator:
+    for i, x in enumerate(rows):
+        yield _v2stall_row(x, _v2stall_rng(seed, i), cfg)
+
+
+_V2StallParent = Generator
+
+
+class Generator(_V2StallParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2stall_cfg = _v2stall_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2stall_on(self) -> bool:
+        return float(self._v2stall_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2stall_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        if self._v2stall_on():
+            base = _v2stall_rows(base, self._v2pipe_seed, self._v2stall_cfg)
+        return super()._v2pipe_rows(base)
