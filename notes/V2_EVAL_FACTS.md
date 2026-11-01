@@ -436,3 +436,20 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
   - Bratislava gets worse with every arm.
   - Mean over the top-25 error sources: jumps −0.058, dock −0.035, quant +0.003, pool2 +0.017.
 - **The fixable error mass is "long constant stretch then movement" (bike stations).** Jumps target exactly this, which is why they help h=64.
+
+## Stall-break stage `v2_stall.json`: rejected (2026-11-01, 3 seeds, equal steps)
+
+| Arm | Seeds 0 / 1 / 2 | Mean | h64 / h256 / h720 | Verdict |
+|---|---|---|---|---|
+| rate 0.5 | −0.17 / −0.02 / −0.52% | −0.24% | +0.39 / −0.48 / −0.62% | **REJECT** |
+| rate 1.0 | −0.01 / +0.08 / −1.65% | −0.53% | +0.67 / −0.86 / −1.40% | negative (inconclusive) |
+
+- **Restricting level changes to stalled channels does not avoid the long-horizon cost.** Every "levels can change" feature (jumps 0.5–5, jumps 0.25–2.5, stall breaks) trades better h=64 and transport for worse h=256/720 and other domains; net ≈ 0 or negative.
+- **Treat this as a property of the model and metric:** more level-change content makes the model less persistent at long horizons.
+- **Ledger status after 5 seeds:**
+  - jumps 0.5–5: +0.46%, t 2.07;
+  - jumps 0.25–2.5: +0.35%, t 2.02;
+  - quant 0.5: +0.15%, t 2.17, positive at all horizons.
+  - All INCONCLUSIVE (one negative seed each).
+  - Rejected: history 0.55, mix 0.3, stall 0.5. Neutral: pool2, dock replace.
+- **None of these features can approach the chain's 1% LCB bar.**
