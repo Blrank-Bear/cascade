@@ -99,9 +99,12 @@ def build_record(snapshot: Path, grid: str, ref: str, meta: dict) -> dict:
     judged = [a for a in arms if a != ref and a in summary]
     steps = {rows[a]["training"]["steps"] for a in arms if rows[a]["training"]["steps"]}
     exits = grid_exit(snapshot, grid)
+    shas = {rows[a]["generator_sha256"] for a in arms}
+    equivalent = [p for p in meta.get("equivalent_generators", []) if p]
+    same = len(shas) == 1 or (bool(equivalent) and all(any(s.startswith(p) for p in equivalent) for s in shas))
     checks = {
         "equal_steps": len(steps) == 1,
-        "same_generator": len({rows[a]["generator_sha256"] for a in arms}) == 1,
+        "same_generator": same,
         "no_failures": bool(exits) and all(e == "EXIT 0" for e in exits),
     }
     for a in judged:  # per-arm: only single-feature arms are attributable
@@ -128,9 +131,15 @@ def main() -> None:
     ap.add_argument("--hours", type=float, required=True)
     ap.add_argument("--config", required=True)
     ap.add_argument("--note", default="")
+    ap.add_argument("--equivalent-generator", action="append", default=[],
+                    help="sha256 prefix of a generator verified output-identical to the others (golden "
+                         "digests); repeat for each. Recorded as a waiver on the same_generator check.")
+    ap.add_argument("--waiver-reason", default="")
     a = ap.parse_args()
-    rec = build_record(a.snapshot.resolve(), a.grid, a.ref,
-                       {"train_seed": a.seed, "hours": a.hours, "config": a.config, "note": a.note})
+    meta = {"train_seed": a.seed, "hours": a.hours, "config": a.config, "note": a.note}
+    if a.equivalent_generator:
+        meta.update(equivalent_generators=a.equivalent_generator, waiver_reason=a.waiver_reason)
+    rec = build_record(a.snapshot.resolve(), a.grid, a.ref, meta)
     append(rec)
     print(json.dumps({k: rec[k] for k in ("id", "steps", "checks", "valid", "invalid_reasons", "judged_arms")}, indent=1))
 
