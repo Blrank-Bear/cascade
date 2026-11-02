@@ -33285,3 +33285,46 @@ class Generator(_V2CntRwParent):
         if self._v2cntrw_on():
             rows = _v2cntrw_rows(rows, self._v2pipe_seed, self._v2cntrw_cfg)
         return rows
+
+
+# ── v2 mrevert, matched replacement ───────────────────────────────────────────
+# Seed-0 test of mrevert30 (ledger/breakdowns/mrevert30_seed0_cells.txt): best family so far,
+# +0.74% round metric: econ_fin +2.7% (h256 +4.8%, h720 +2.2%), transport +2.0%; losses only
+# in energy (-1.3%) and web_cloudops (-1.0%), the seasonal rows that random replacement
+# displaced. Matched mode replaces only random-walk-like king rows (same VR(64) test as matched
+# longrw); seasonal/stationary rows are never touched.
+# Keys in v2_mrevert.json: match_rate (default 0 = off), match_vr_min, match_lag.
+_V2MRVM_TAG = 0x7A2F0018
+
+
+def _v2mrvm_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2MRVM_TAG], spawn_key=(i,)))
+
+
+def _v2mrvm_rows(rows, seed: int, mrevert_cfg: dict) -> Iterator:
+    cfg = _v2lrwm_cfg(mrevert_cfg)
+    rate = float(cfg["match_rate"])
+    for i, x in enumerate(rows):
+        rng = _v2mrvm_rng(seed, i)
+        if rng.random() < rate and _v2lrwm_is_rw_like(x, cfg):
+            yield _v2long_replace(x, rng, "mrevert", mrevert_cfg)
+        else:
+            yield x
+
+
+_V2MrvMatchParent = Generator
+
+
+class Generator(_V2MrvMatchParent):
+    def _v2mrvm_on(self) -> bool:
+        return float(_v2lrwm_cfg(self._v2long_cfgs["mrevert"])["match_rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2mrvm_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2mrvm_on():
+            rows = _v2mrvm_rows(rows, self._v2pipe_seed, self._v2long_cfgs["mrevert"])
+        return rows
