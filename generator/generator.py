@@ -33005,3 +33005,129 @@ class Generator(_V2LongParent):
         for n in self._v2long_active():
             rows = _v2long_rows(rows, self._v2pipe_seed, n, self._v2long_cfgs[n])
         return rows
+
+
+# ── v2 batch 2: multi-season, intermittent demand, trend breaks (replace mode) ──
+# Next error cells after h=720 econ_fin (ledger/error_budget_base_s0.txt): h=720/256 transport
+# and sales, count-like healthcare/sales. Same mechanics as the long-horizon families above;
+# own tags and files: v2_mseason.json, v2_intermit.json, v2_tbreak.json.
+_V2B2_TAGS = {"mseason": 0x7A2F0013, "intermit": 0x7A2F0014, "tbreak": 0x7A2F0015}
+_V2B2_DEFAULTS = {
+    "mseason": {"rate": 0.0, "event_share": 0.5, "noise_min": 0.05, "noise_max": 0.4},
+    "intermit": {"rate": 0.0, "p_min": 0.02, "p_max": 0.6, "season_share": 0.5},
+    "tbreak": {"rate": 0.0, "breaks_max": 5, "season_share": 0.6, "noise_min": 0.05, "noise_max": 0.5},
+}
+
+
+def _v2b2_load_config(config_dir: str, name: str) -> dict:
+    path = Path(config_dir) / f"v2_{name}.json"
+    base = dict(_V2B2_DEFAULTS[name])
+    if not path.is_file():
+        return base
+    return {**base, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2b2_rng(seed: int, name: str, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2B2_TAGS[name]], spawn_key=(i,)))
+
+
+def _v2b2_events(rng, L: int, period: float) -> np.ndarray:
+    """Holiday-like multiplicative events: a few recurring dates (every ~long period) and one-offs."""
+    e = np.zeros(L)
+    cycle = period * float(rng.choice([7, 30, 52, 365]))
+    if cycle < L:
+        start = int(rng.integers(0, int(cycle)))
+        width = max(1, int(period * rng.uniform(0.2, 1.5)))
+        mag = rng.normal(0.0, 0.8)
+        for a in range(start, L, int(cycle)):
+            e[a:a + width] += mag
+    for a in rng.integers(0, L, size=int(rng.integers(0, 4))):
+        e[a:a + max(1, int(period * rng.uniform(0.2, 2.0)))] += rng.normal(0.0, 1.0)
+    return e
+
+
+def _v2b2_mseason(rng, L: int, cfg: dict) -> np.ndarray:
+    """Two or three nested seasonalities (e.g. hour-of-day x day-of-week x slow cycle) + events."""
+    t = np.arange(L, dtype=np.float64)
+    p1 = float(rng.choice([24, 48, 96, 288, 7]))
+    y = _v2mix_unit(_v2mix_seasonal_profile(rng, t, p1))
+    y = y + rng.uniform(0.3, 1.0) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, p1 * 7.0 if p1 > 7 else 365.25 / 7.0 * 7.0))
+    if rng.random() < 0.5:
+        y = y + rng.uniform(0.1, 0.6) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, L * rng.uniform(0.3, 1.5)))
+    if rng.random() < float(cfg["event_share"]):
+        y = y + _v2b2_events(rng, L, p1)
+    y = y + _v2mix_trend(rng, t) + rng.uniform(float(cfg["noise_min"]), float(cfg["noise_max"])) * rng.standard_normal(L)
+    if rng.random() < 0.6:  # demand-like: positive, multiplicative
+        y = np.exp(0.5 * y / max(np.std(y), 1e-9))
+    return _v2long_level(rng, y)
+
+
+def _v2b2_intermit(rng, L: int, cfg: dict) -> np.ndarray:
+    """Intermittent counts: Bernoulli occurrence (optionally seasonal) x geometric/Poisson sizes."""
+    t = np.arange(L, dtype=np.float64)
+    p = _v2pool_log_uniform(rng, float(cfg["p_min"]), float(cfg["p_max"]))
+    logit = np.log(p / (1.0 - p)) + np.zeros(L)
+    if rng.random() < float(cfg["season_share"]):
+        logit = logit + rng.uniform(0.5, 2.5) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, float(rng.choice([7, 24, 12, 52]))))
+    logit = logit + np.cumsum(rng.normal(0.0, 0.01, L))  # slowly drifting demand rate
+    occur = rng.random(L) < 1.0 / (1.0 + np.exp(-logit))
+    size = rng.poisson(_v2pool_log_uniform(rng, 0.5, 50.0), L) + 1
+    return (occur * size).astype(np.float64)
+
+
+def _v2b2_tbreak(rng, L: int, cfg: dict) -> np.ndarray:
+    """Piecewise-linear trend with changepoints (slope and occasional level), optional season."""
+    t = np.arange(L, dtype=np.float64)
+    k = int(rng.integers(1, int(cfg["breaks_max"]) + 1))
+    cuts = np.sort(rng.integers(L // 20, L, size=k))
+    slope = np.full(L, rng.normal(0.0, 1.0) / L)
+    level = np.zeros(L)
+    for c in cuts:
+        slope[c:] = rng.normal(0.0, 1.0) / L * rng.uniform(1.0, 6.0)
+        if rng.random() < 0.3:
+            level[c:] += rng.normal(0.0, 0.3)
+    y = np.cumsum(slope) * rng.uniform(1.0, 8.0) + level
+    if rng.random() < float(cfg["season_share"]):
+        y = y + rng.uniform(0.05, 0.6) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, float(rng.choice([7, 12, 24, 52, 96]))))
+    y = y + rng.uniform(float(cfg["noise_min"]), float(cfg["noise_max"])) * 0.1 * _v2long_innovations(rng, L, {"garch_share": 0.2})
+    return _v2long_level(rng, y)
+
+
+_V2B2_MAKERS = {"mseason": _v2b2_mseason, "intermit": _v2b2_intermit, "tbreak": _v2b2_tbreak}
+
+
+def _v2b2_replace(x, rng, name: str, cfg: dict):
+    rows = _v2_as_rows(x)
+    C, L = rows.shape
+    new = np.stack([_V2B2_MAKERS[name](rng, L, cfg) for _ in range(C)])
+    new = new[0] if np.ndim(x["values"] if isinstance(x, dict) else x) == 1 else new
+    return {**x, "values": new} if isinstance(x, dict) else new
+
+
+def _v2b2_rows(rows, seed: int, name: str, cfg: dict) -> Iterator:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2b2_rng(seed, name, i)
+        yield _v2b2_replace(x, rng, name, cfg) if rng.random() < rate else x
+
+
+_V2B2Parent = Generator
+
+
+class Generator(_V2B2Parent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2b2_cfgs = {n: _v2b2_load_config(config_dir, n) for n in _V2B2_MAKERS}
+        super().__init__(config_dir, seed=seed)
+
+    def _v2b2_active(self) -> list[str]:
+        return [n for n, c in self._v2b2_cfgs.items() if float(c["rate"]) > 0.0]
+
+    def _v2pipe_active(self) -> bool:
+        return bool(self._v2b2_active()) or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        for n in self._v2b2_active():
+            rows = _v2b2_rows(rows, self._v2pipe_seed, n, self._v2b2_cfgs[n])
+        return rows

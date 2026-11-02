@@ -1,0 +1,6 @@
+{
+ "base": {},
+ "mseason30": {"v2_mseason.json": {"rate": 0.3}},
+ "intermit30": {"v2_intermit.json": {"rate": 0.3}},
+ "tbreak30": {"v2_tbreak.json": {"rate": 0.3}}
+}
