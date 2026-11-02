@@ -4,9 +4,9 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 
 | Feature (switch vs reference) | Arm | Seeds | Per-seed gain | Mean | sd | t | Horizons (64/256/720) | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| `{"v2_jumps.json": {"max_outliers": 0.25, "max_shifts": 24.0, "rate": 1.0, "size_max": 5.0, "size_min": 0.5}}` | j100sz05 | [0, 1, 2, 3, 4] | -0.28%, +1.00%, +0.23%, +0.68%, +0.64% | +0.46% | +0.49% | 2.07 | +1.55% / +0.23% / -0.43% | **INCONCLUSIVE** |
-| `{"v2_jumps.json": {"max_outliers": 0.25, "max_shifts": 24.0, "rate": 1.0, "size_max": 2.5, "size_min": 0.25}}` | jsz025 | [0, 1, 2, 3, 4] | +0.20%, +0.63%, -0.24%, +0.70%, +0.44% | +0.35% | +0.38% | 2.02 | +1.52% / -0.05% / -0.44% | **INCONCLUSIVE** |
-| `{"v2_quant.json": {"rate": 0.5}}` | q50 | [0, 1, 2, 3, 4] | +0.14%, +0.13%, -0.08%, +0.34%, +0.23% | +0.15% | +0.15% | 2.17 | +0.22% / +0.11% / +0.13% | **INCONCLUSIVE** |
+| `{"v2_jumps.json": {"max_outliers": 0.25, "max_shifts": 24.0, "rate": 1.0, "size_max": 5.0, "size_min": 0.5}}` | j100sz05 | [0, 1, 2, 3, 4, 5] | -0.28%, +1.00%, +0.23%, +0.68%, +0.64%, -0.43% | +0.31% | +0.57% | 1.33 | +1.39% / +0.05% / -0.52% | **INCONCLUSIVE** |
+| `{"v2_jumps.json": {"max_outliers": 0.25, "max_shifts": 24.0, "rate": 1.0, "size_max": 2.5, "size_min": 0.25}}` | jsz025 | [0, 1, 2, 3, 4, 5] | +0.20%, +0.63%, -0.24%, +0.70%, +0.44%, -0.52% | +0.20% | +0.49% | 1.01 | +1.39% / -0.19% / -0.60% | **INCONCLUSIVE** |
+| `{"v2_quant.json": {"rate": 0.5}}` | q50 | [0, 1, 2, 3, 4, 5] | +0.14%, +0.13%, -0.08%, +0.34%, +0.23%, -0.19% | +0.09% | +0.19% | 1.17 | +0.14% / +0.04% / +0.09% | **INCONCLUSIVE** |
 | `{"v2_quant.json": {"rate": 1.0}}` | q100 | [0, 1, 2] | -0.11%, +0.32%, -0.29% | -0.03% | +0.31% | -0.16 | +0.01% / +0.01% / -0.11% | **INCONCLUSIVE** |
 | `{"v2_pool2.json": {"rate": 0.25}}` | p2_25 | [0, 1, 2] | -0.50%, +0.61%, -0.36% | -0.08% | +0.60% | -0.23 | +0.11% / +0.17% / -0.53% | **INCONCLUSIVE** |
 | `{"v2_dock.json": {"replace_rate": 0.6}}` | dr60only | [0, 1, 2] | -0.15%, +0.29%, -0.40% | -0.09% | +0.35% | -0.44 | -0.02% / +0.02% / -0.27% | **INCONCLUSIVE** |
@@ -18,9 +18,9 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 
 ## Per-domain effect (mean log MASE arm/reference across seeds; negative = better)
 
-- **j100sz05**: transport -0.033, econ_fin -0.016, nature -0.010, sales -0.004, web_cloudops +0.007, energy +0.008, healthcare +0.011
-- **jsz025**: transport -0.030, econ_fin -0.013, nature -0.009, sales -0.007, energy +0.009, web_cloudops +0.009, healthcare +0.011
-- **q50**: web_cloudops -0.006, healthcare -0.005, nature -0.003, econ_fin -0.002, sales -0.001, energy -0.000, transport +0.001
+- **j100sz05**: transport -0.032, econ_fin -0.015, nature -0.007, sales -0.002, web_cloudops +0.007, energy +0.008, healthcare +0.014
+- **jsz025**: transport -0.029, econ_fin -0.011, nature -0.007, sales -0.005, web_cloudops +0.009, energy +0.009, healthcare +0.014
+- **q50**: web_cloudops -0.005, healthcare -0.004, nature -0.003, econ_fin -0.001, energy -0.000, sales +0.000, transport +0.001
 - **q100**: healthcare -0.007, web_cloudops -0.004, nature -0.001, econ_fin -0.000, energy +0.000, transport +0.004, sales +0.006
 - **p2_25**: healthcare -0.004, web_cloudops -0.004, nature -0.001, sales +0.002, energy +0.002, econ_fin +0.003, transport +0.006
 - **dr60only**: econ_fin -0.003, healthcare -0.003, web_cloudops -0.003, energy -0.001, transport -0.001, nature +0.003, sales +0.006
