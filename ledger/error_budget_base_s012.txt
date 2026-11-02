@@ -1,0 +1,24 @@
+windows 35598; a 1% metric gain = lowering mean half-log-error by 0.01 = 356 units in total
+
+   h domain            n  mean err  MASE>1  excess logMASE 1% of cell
+ 720 econ_fin       2226    -0.659    0.69            1649         22
+ 720 transport      1923    -0.329    0.49            1478         19
+ 256 transport      1851    -0.461    0.46            1197         19
+ 256 sales          1578    -0.627    0.51            1001         16
+ 256 nature         1959    -1.336    0.52             984         20
+ 256 econ_fin       2160    -0.929    0.47             908         22
+ 720 sales          1578    -0.490    0.56             809         16
+  64 sales          1383    -0.901    0.38             792         14
+ 720 nature         1641    -1.066    0.62             774         16
+ 720 energy         2115    -0.493    0.52             688         21
+  64 transport      1779    -1.154    0.24             640         18
+  64 econ_fin       2355    -1.213    0.36             592         24
+ 720 healthcare     1455    -0.331    0.63             521         15
+  64 nature         1383    -1.169    0.42             499         14
+ 256 energy         1476    -0.677    0.56             455         15
+ 720 web_cloudops    984    -0.659    0.44             399         10
+ 256 healthcare     1299    -0.373    0.39             394         13
+  64 energy         1983    -0.811    0.39             327         20
+ 256 web_cloudops   1581    -0.616    0.40             321         16
+  64 healthcare     1707    -0.622    0.29             318         17
+  64 web_cloudops   1182    -0.580    0.43             283         12
