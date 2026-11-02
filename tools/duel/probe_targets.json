@@ -1,0 +1,66 @@
+{
+ "longrw30": [
+  [
+   720,
+   "econ_fin"
+  ],
+  [
+   256,
+   "econ_fin"
+  ]
+ ],
+ "lseason30": [
+  [
+   720,
+   "transport"
+  ],
+  [
+   720,
+   "energy"
+  ]
+ ],
+ "mrevert30": [
+  [
+   720,
+   "econ_fin"
+  ],
+  [
+   720,
+   "nature"
+  ]
+ ],
+ "mseason30": [
+  [
+   256,
+   "transport"
+  ],
+  [
+   720,
+   "transport"
+  ],
+  [
+   256,
+   "sales"
+  ]
+ ],
+ "intermit30": [
+  [
+   256,
+   "sales"
+  ],
+  [
+   720,
+   "healthcare"
+  ]
+ ],
+ "tbreak30": [
+  [
+   720,
+   "econ_fin"
+  ],
+  [
+   256,
+   "sales"
+  ]
+ ]
+}

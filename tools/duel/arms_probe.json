@@ -1,0 +1,71 @@
+{
+ "base": {},
+ "h55": {
+  "v2_history.json": {
+   "rate": 0.55
+  }
+ },
+ "mix30": {
+  "v2_mix.json": {
+   "rate": 0.3
+  }
+ },
+ "stall100": {
+  "v2_stall.json": {
+   "rate": 1.0
+  }
+ },
+ "j100sz05": {
+  "v2_jumps.json": {
+   "max_outliers": 0.25,
+   "max_shifts": 24.0,
+   "rate": 1.0,
+   "size_max": 5.0,
+   "size_min": 0.5
+  }
+ },
+ "jsz025": {
+  "v2_jumps.json": {
+   "max_outliers": 0.25,
+   "max_shifts": 24.0,
+   "rate": 1.0,
+   "size_max": 2.5,
+   "size_min": 0.25
+  }
+ },
+ "q50": {
+  "v2_quant.json": {
+   "rate": 0.5
+  }
+ },
+ "longrw30": {
+  "v2_longrw.json": {
+   "rate": 0.3
+  }
+ },
+ "lseason30": {
+  "v2_lseason.json": {
+   "rate": 0.3
+  }
+ },
+ "mrevert30": {
+  "v2_mrevert.json": {
+   "rate": 0.3
+  }
+ },
+ "mseason30": {
+  "v2_mseason.json": {
+   "rate": 0.3
+  }
+ },
+ "intermit30": {
+  "v2_intermit.json": {
+   "rate": 0.3
+  }
+ },
+ "tbreak30": {
+  "v2_tbreak.json": {
+   "rate": 0.3
+  }
+ }
+}
