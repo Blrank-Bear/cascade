@@ -453,3 +453,15 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
   - All INCONCLUSIVE (one negative seed each).
   - Rejected: history 0.55, mix 0.3, stall 0.5. Neutral: pool2, dock replace.
 - **None of these features can approach the chain's 1% LCB bar.**
+
+## Quant dose test (2026-11-02, 3 seeds, 396 equal steps, 28m mb2)
+
+| rate | seeds | per-seed | mean | t |
+|---|---|---|---|---|
+| 0.5 | 5 | +0.14 +0.13 -0.08 +0.34 +0.23 | +0.15% | 2.17 |
+| 0.75 | 3 | +0.13 -0.30 -0.21 | -0.13% | -0.99 |
+| 1.0 | 3 | -0.11 +0.32 -0.29 | -0.03% | -0.16 |
+
+No dose response: raising quantization above 0.5 removes the small gain. If quant is kept, 0.5 is the
+ceiling. All three INCONCLUSIVE by the fixed rules; none near the chain's 1% bar.
+Seeds 5 and 6 for jsz05 / jsz025 / q50 are running next (grid_gpu4s5, grid_gpu4s6).
