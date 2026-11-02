@@ -1,0 +1,4 @@
+h= 64 *=-0.97% econ_fin=-1.22% energy=+0.67% healthcare=+0.40% nature=-1.50% sales=-1.45% transport=-3.04% web_cloudops=-0.85%
+h=256 *=-0.87% econ_fin=+0.24% energy=-0.20% healthcare=+1.36% nature=-3.80% sales=-0.28% transport=-1.62% web_cloudops=-0.95%
+h=720 *=-0.62% econ_fin=-0.07% energy=-0.15% healthcare=+0.38% nature=-2.84% sales=-0.33% transport=-0.77% web_cloudops=-0.80%
+h=  * *=-0.82% econ_fin=-0.37% energy=+0.13% healthcare=+0.67% nature=-2.85% sales=-0.65% transport=-1.78% web_cloudops=-0.88%
