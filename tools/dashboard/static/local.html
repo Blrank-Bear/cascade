@@ -674,5 +674,84 @@ function renderFoot() {
 }
 addEventListener("resize", () => { if (S) { renderRounds(); renderGpu(); } });
 </script>
+<script>
+/* ── Our projected score on the King vs challengers panel (section "ours_proj", served by local_v3.py) ──
+   Not an on-chain score: projected = king metric × (1 − our best single feature's mean local gain).
+   Switch off with ?ours=0 in the URL; without the section (local_v2.py) the panel renders as before. */
+const OURS_PROJ_ON = new URLSearchParams(location.search).get("ours") !== "0";
+const renderRoundsBase = renderRounds;
+
+function oursBest() { return OURS_PROJ_ON ? S?.sections?.ours_proj?.best || null : null; }
+
+function oursProjected(kingMetric, best) { return kingMetric == null ? null : kingMetric * (1 - best.mean); }
+
+function oursGainText(g) { return g == null ? "—" : (g > 0 ? "+" : "") + (g * 100).toFixed(2) + "%"; }
+
+function oursLegend(best) {
+  const lg = document.querySelector("#king .legend");
+  if (!lg) return;
+  let el = lg.querySelector(".ours-proj");
+  if (!best) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("span"); el.className = "ours-proj"; lg.insertBefore(el, lg.lastElementChild); }
+  el.innerHTML = `<i style="background:var(--ours)"></i>Ours (projected)`;
+  el.title = `Not an on-chain score. King metric × (1 − ${oursGainText(best.mean)}): mean gain of ${best.arm} over the king-equivalent base, ${best.n} seeds, verdict ${best.verdict}.`;
+}
+
+function oursSubtitle(best) {
+  const sub = document.querySelector("#king .ph .sub");
+  if (!sub) return;
+  sub.textContent = "Settled rounds from public receipts · round metric, lower is better" +
+    (best ? ` · Ours = projection from local GPU duels (${best.arm}, ${oursGainText(best.mean)}, n=${best.n}, t=${best.t == null ? "—" : best.t.toFixed(2)}); we have no on-chain round yet` : "");
+}
+
+function oursTip(r, best) {
+  const p = oursProjected(r.king_geomean, best);
+  const lo = best.se == null ? null : oursProjected(r.king_geomean, { mean: best.mean + 2 * best.se });
+  const hi = best.se == null ? null : oursProjected(r.king_geomean, { mean: best.mean - 2 * best.se });
+  return `<br>Ours (projected, ${esc(best.arm)}): <b class="num">${fmt(p)}</b>` +
+    (lo == null ? "" : `<br><span class="muted">±2 SE: ${fmt(lo)} – ${fmt(hi)}</span>`) +
+    `<br><span class="muted">gap vs king ${oursGainText(best.mean)} · chain needs LCB &gt; 0 (≈1%)</span>`;
+}
+
+function oursChart(rows, best) {
+  lineChart($("roundChart"), rows.map((r) => r.epoch_start_block), [
+    { name: "King", color: css("--king"), ys: rows.map((r) => r.king_geomean) },
+    { name: "Challenger", color: css("--chal"), ys: rows.map((r) => r.chal_geomean), dash: "4 3" },
+    { name: "Ours (projected)", color: css("--ours"), ys: rows.map((r) => oursProjected(r.king_geomean, best)), dash: "1 4" },
+  ], rows.map((r) => !!r.dethroned), (i) => {
+    const r = rows[i], gap = r.chal_geomean ? 1 - r.chal_geomean / r.king_geomean : null;
+    return `<b>Round ${r.epoch_start_block}</b><br><span class="muted">${esc((r.published_at || "").replace("T", " ").slice(0, 16))} UTC</span><br>
+      King uid ${r.king_uid}: <b class="num">${fmt(r.king_geomean)}</b><br>Chal uid ${r.chal_uid ?? "—"}: <b class="num">${fmt(r.chal_geomean)}</b><br>
+      Gap ${gap == null ? "—" : (gap * 100).toFixed(2) + "%"} · win rate ${pct(r.win_rate)}${r.dethroned ? '<br><b class="down">Dethroned</b>' : ""}` + oursTip(r, best);
+  });
+}
+
+function oursColumn(rows, best) {
+  const trs = $("roundTbl").querySelectorAll("tr");
+  if (!trs.length) return;
+  const ordered = rows.slice().reverse();
+  const th = document.createElement("th");
+  th.className = "r"; th.textContent = "Ours (proj.)";
+  th.title = "Projected from local GPU duels — not an on-chain score";
+  trs[0].insertBefore(th, trs[0].children[4]);
+  ordered.forEach((r, i) => {
+    const tr = trs[i + 1]; if (!tr) return;
+    const td = document.createElement("td");
+    td.className = "r num"; td.style.color = "var(--ours)";
+    td.textContent = fmt(oursProjected(r.king_geomean, best));
+    td.title = `${best.arm}: king × (1 − ${oursGainText(best.mean)}), ${best.n} seeds`;
+    tr.insertBefore(td, tr.children[4]);
+  });
+}
+
+renderRounds = function () {
+  renderRoundsBase();
+  const rows = S.sections.chain?.rounds || [], best = oursBest();
+  oursLegend(best); oursSubtitle(best);
+  if (!rows.length || !best) return;
+  oursChart(rows, best);
+  oursColumn(rows, best);
+};
+</script>
 </body>
 </html>
