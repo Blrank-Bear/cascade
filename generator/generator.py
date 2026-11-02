@@ -33197,3 +33197,91 @@ class Generator(_V2LrwMatchParent):
         if self._v2lrwm_on():
             rows = _v2lrwm_rows(rows, self._v2pipe_seed, self._v2long_cfgs["longrw"])
         return rows
+
+
+# ── v2 bounded integer random walks (counts), matched replacement ─────────────
+# Seed-0 analysis (ledger/breakdowns/longrw30_seed0_cells.txt): random walks gave the largest
+# gain in transport (h64 +4.2%, h256 +3.4%), whose error is dominated by station counts
+# (bikes/docks available): integer, bounded to [0, capacity], small steps, long holds, a daily
+# drift in the step direction. This family generates exactly that and, like matched longrw,
+# replaces only random-walk-like king rows (VR(64) >= match_vr_min) with prob. `match_rate`.
+# Optional v2_cntrw.json: match_rate (default 0 = off), match_vr_min, match_lag, hold_min, hold_max.
+_V2CNTRW_TAG = 0x7A2F0017
+_V2CNTRW_FILE = "v2_cntrw.json"
+_V2CNTRW_DEFAULTS = {"match_rate": 0.0, "match_vr_min": 0.6, "match_lag": 64, "hold_min": 0.3, "hold_max": 0.95}
+
+
+def _v2cntrw_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2CNTRW_FILE
+    if not path.is_file():
+        return dict(_V2CNTRW_DEFAULTS)
+    return {**_V2CNTRW_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2cntrw_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2CNTRW_TAG], spawn_key=(i,)))
+
+
+def _v2cntrw_steps(rng, L: int, cfg: dict) -> np.ndarray:
+    """Integer steps: mostly holds; moves of 1..k whose sign follows a daily demand cycle."""
+    hold = rng.uniform(float(cfg["hold_min"]), float(cfg["hold_max"]))
+    period = float(rng.choice([24, 48, 96, 144, 288]))
+    t = np.arange(L, dtype=np.float64)
+    bias = rng.uniform(0.0, 0.8) * _v2mix_unit(_v2mix_seasonal_profile(rng, t, period))
+    p_up = 1.0 / (1.0 + np.exp(-bias))
+    move = rng.random(L) >= hold
+    size = 1 + rng.geometric(rng.uniform(0.3, 0.9), L) - 1
+    sign = np.where(rng.random(L) < p_up, 1.0, -1.0)
+    return move * size * sign
+
+
+def _v2cntrw_series(rng, L: int, cfg: dict) -> np.ndarray:
+    cap = int(_v2pool_log_uniform(rng, 5.0, 120.0))
+    y = np.empty(L)
+    level = float(rng.integers(0, cap + 1))
+    for t, s in enumerate(_v2cntrw_steps(rng, L, cfg)):
+        level = min(max(level + s, 0.0), float(cap))
+        y[t] = level
+    if rng.random() < 0.3:  # docks view: capacity minus bikes
+        y = cap - y
+    return y
+
+
+def _v2cntrw_replace(x, rng, cfg: dict):
+    rows = _v2_as_rows(x)
+    C, L = rows.shape
+    new = np.stack([_v2cntrw_series(rng, L, cfg) for _ in range(C)])
+    new = new[0] if np.ndim(x["values"] if isinstance(x, dict) else x) == 1 else new
+    return {**x, "values": new} if isinstance(x, dict) else new
+
+
+def _v2cntrw_rows(rows, seed: int, cfg: dict) -> Iterator:
+    rate = float(cfg["match_rate"])
+    for i, x in enumerate(rows):
+        rng = _v2cntrw_rng(seed, i)
+        if rng.random() < rate and _v2lrwm_is_rw_like(x, cfg):
+            yield _v2cntrw_replace(x, rng, cfg)
+        else:
+            yield x
+
+
+_V2CntRwParent = Generator
+
+
+class Generator(_V2CntRwParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2cntrw_cfg = _v2cntrw_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2cntrw_on(self) -> bool:
+        return float(self._v2cntrw_cfg["match_rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2cntrw_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2cntrw_on():
+            rows = _v2cntrw_rows(rows, self._v2pipe_seed, self._v2cntrw_cfg)
+        return rows

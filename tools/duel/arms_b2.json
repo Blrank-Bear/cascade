@@ -19,5 +19,10 @@
   "v2_longrw.json": {
    "match_rate": 0.5
   }
+ },
+ "cntrw50": {
+  "v2_cntrw.json": {
+   "match_rate": 0.5
+  }
  }
 }
