@@ -32874,3 +32874,134 @@ class Generator(_V2StallParent):
         if self._v2stall_on():
             base = _v2stall_rows(base, self._v2pipe_seed, self._v2stall_cfg)
         return super()._v2pipe_rows(base)
+
+
+# ── v2 long-horizon families (replace mode; each switchable on its own) ───────
+# Error budget (ledger/error_budget_base_s0.txt): the model's excess error sits at h=720,
+# worst in econ_fin (69% of windows worse than seasonal naive), then transport/nature/
+# healthcare. Three families teach the long-range behaviour those series need. Each replaces
+# a `rate` fraction of king rows (record budget unchanged), keeping the row's shape and any
+# metadata dict; values only. Optional files: v2_longrw.json, v2_lseason.json, v2_mrevert.json.
+_V2LONG_TAGS = {"longrw": 0x7A2F0010, "lseason": 0x7A2F0011, "mrevert": 0x7A2F0012}
+_V2LONG_DEFAULTS = {
+    "longrw": {"rate": 0.0, "log_share": 0.5, "drift_share": 0.3, "garch_share": 0.5, "tail_df_min": 2.5},
+    "lseason": {"rate": 0.0, "weekly_share": 0.5, "level_vol": 0.002, "amp_vol": 0.002, "noise_min": 0.05, "noise_max": 0.5},
+    "mrevert": {"rate": 0.0, "half_life_min": 50.0, "half_life_max": 5000.0, "regime_share": 0.3},
+}
+
+
+def _v2long_load_config(config_dir: str, name: str) -> dict:
+    path = Path(config_dir) / f"v2_{name}.json"
+    base = dict(_V2LONG_DEFAULTS[name])
+    if not path.is_file():
+        return base
+    return {**base, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2long_rng(seed: int, name: str, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2LONG_TAGS[name]], spawn_key=(i,)))
+
+
+def _v2long_innovations(rng, L: int, cfg: dict) -> np.ndarray:
+    """Unit-scale innovations: Student-t tails, optionally GARCH(1,1) volatility clusters."""
+    df = rng.uniform(float(cfg.get("tail_df_min", 2.5)), 30.0)
+    z = rng.standard_t(df, L) / np.sqrt(df / (df - 2.0))
+    if rng.random() >= float(cfg.get("garch_share", 0.0)):
+        return z
+    a, b = rng.uniform(0.02, 0.15), rng.uniform(0.80, 0.97)
+    b = min(b, 0.995 - a)
+    var, out = 1.0, np.empty(L)
+    for t in range(L):
+        out[t] = np.sqrt(var) * z[t]
+        var = (1.0 - a - b) + a * out[t] * out[t] + b * var
+    return out
+
+
+def _v2long_level(rng, x: np.ndarray) -> np.ndarray:
+    """Random positive or signed offset/scale so families cover the king's value ranges."""
+    scale = _v2pool_log_uniform(rng, 0.01, 1000.0)
+    return x * scale + (rng.normal(0.0, 3.0) * scale if rng.random() < 0.5 else 0.0)
+
+
+def _v2long_rw(rng, L: int, cfg: dict) -> np.ndarray:
+    """Random walk (or log random walk for price-like series), optional drift."""
+    eps = _v2long_innovations(rng, L, cfg)
+    drift = rng.normal(0.0, 0.05) if rng.random() < float(cfg["drift_share"]) else 0.0
+    if rng.random() < float(cfg["log_share"]):
+        vol = _v2pool_log_uniform(rng, 0.002, 0.05)
+        path = np.cumsum(vol * (eps + drift))
+        return np.exp(path - path.mean()) * _v2pool_log_uniform(rng, 0.1, 1e4)
+    return _v2long_level(rng, np.cumsum(eps + drift))
+
+
+def _v2long_lseason(rng, L: int, cfg: dict) -> np.ndarray:
+    """Seasonal series whose level and amplitude drift slowly (daily, optionally x weekly)."""
+    t = np.arange(L, dtype=np.float64)
+    period = float(rng.choice([24, 48, 96, 144, 288, 7, 12, 52]))
+    season = _v2mix_unit(_v2mix_seasonal_profile(rng, t, period))
+    if rng.random() < float(cfg["weekly_share"]) and period >= 24:
+        season = season * (1.0 + 0.5 * _v2mix_unit(_v2mix_seasonal_profile(rng, t, 7.0 * period)))
+    level = np.cumsum(rng.normal(0.0, float(cfg["level_vol"]), L)) * np.sqrt(L)
+    amp = np.exp(np.cumsum(rng.normal(0.0, float(cfg["amp_vol"]), L)))
+    noise = rng.uniform(float(cfg["noise_min"]), float(cfg["noise_max"])) * _v2long_innovations(rng, L, {"garch_share": 0.2})
+    y = level + amp * season + noise
+    if rng.random() < 0.5:  # count-like / non-negative variant
+        y = np.maximum(y - y.min(), 0.0)
+    return _v2long_level(rng, y)
+
+
+def _v2long_mrevert(rng, L: int, cfg: dict) -> np.ndarray:
+    """Near-unit-root AR(1) around a mean that may switch regime (rates, indicators)."""
+    hl = _v2pool_log_uniform(rng, float(cfg["half_life_min"]), float(cfg["half_life_max"]))
+    phi = 0.5 ** (1.0 / hl)
+    mu = np.zeros(L)
+    if rng.random() < float(cfg["regime_share"]):
+        cuts = np.sort(rng.integers(1, L, size=int(rng.integers(1, 4))))
+        for c in cuts:
+            mu[c:] += rng.normal(0.0, 3.0)
+    eps = _v2long_innovations(rng, L, {"garch_share": 0.3}) * np.sqrt(1.0 - phi * phi)
+    y, prev = np.empty(L), rng.normal()
+    for t in range(L):
+        prev = mu[t] + phi * (prev - mu[t]) + eps[t]
+        y[t] = prev
+    return _v2long_level(rng, y)
+
+
+_V2LONG_MAKERS = {"longrw": _v2long_rw, "lseason": _v2long_lseason, "mrevert": _v2long_mrevert}
+
+
+def _v2long_replace(x, rng, name: str, cfg: dict):
+    rows = _v2_as_rows(x)
+    C, L = rows.shape
+    new = np.stack([_V2LONG_MAKERS[name](rng, L, cfg) for _ in range(C)])
+    new = new[0] if np.ndim(x["values"] if isinstance(x, dict) else x) == 1 else new
+    return {**x, "values": new} if isinstance(x, dict) else new
+
+
+def _v2long_rows(rows, seed: int, name: str, cfg: dict) -> Iterator:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2long_rng(seed, name, i)
+        yield _v2long_replace(x, rng, name, cfg) if rng.random() < rate else x
+
+
+_V2LongParent = Generator
+
+
+class Generator(_V2LongParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2long_cfgs = {n: _v2long_load_config(config_dir, n) for n in _V2LONG_MAKERS}
+        super().__init__(config_dir, seed=seed)
+
+    def _v2long_active(self) -> list[str]:
+        return [n for n, c in self._v2long_cfgs.items() if float(c["rate"]) > 0.0]
+
+    def _v2pipe_active(self) -> bool:
+        return bool(self._v2long_active()) or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        for n in self._v2long_active():
+            rows = _v2long_rows(rows, self._v2pipe_seed, n, self._v2long_cfgs[n])
+        return rows
