@@ -588,6 +588,10 @@
   [
    "grid_gpu4s3@20261101T075944Z",
    "invalid: same_generator"
+  ],
+  [
+   "grid_gpu4@20261102T184750Z",
+   "invalid: same_generator"
   ]
  ]
 }
