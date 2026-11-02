@@ -33328,3 +33328,56 @@ class Generator(_V2MrvMatchParent):
         if self._v2mrvm_on():
             rows = _v2mrvm_rows(rows, self._v2pipe_seed, self._v2long_cfgs["mrevert"])
         return rows
+
+
+# ── v2 mseason, matched replacement (seasonal/stationary rows only) ───────────
+# Seed-0 test of mseason30 (ledger/breakdowns/mseason30_seed0_cells.txt): -0.47% overall, but the
+# mirror image of mrevert30: energy +1.4%, web_cloudops +1.2%, healthcare +1.0% (the domains
+# mrevert hurts), losses in transport -2.2%, econ_fin -1.1%, sales -1.4% from displaced
+# random-walk rows. Matched mode replaces only king rows that are NOT random-walk-like
+# (VR(64) < match_vr_max), so random-walk rows stay for the domains that need them.
+# Keys in v2_mseason.json: match_rate (default 0 = off), match_vr_max, match_lag.
+_V2MSSM_TAG = 0x7A2F0019
+_V2MSSM_DEFAULTS = {"match_rate": 0.0, "match_vr_max": 0.3, "match_lag": 64}
+
+
+def _v2mssm_cfg(mseason_cfg: dict) -> dict:
+    return {**_V2MSSM_DEFAULTS, **{k: mseason_cfg[k] for k in _V2MSSM_DEFAULTS if k in mseason_cfg}}
+
+
+def _v2mssm_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2MSSM_TAG], spawn_key=(i,)))
+
+
+def _v2mssm_is_seasonal_like(x, cfg: dict) -> bool:
+    rows = _v2_as_rows(x)
+    return _v2lrwm_variance_ratio(rows[0], int(cfg["match_lag"])) < float(cfg["match_vr_max"])
+
+
+def _v2mssm_rows(rows, seed: int, mseason_cfg: dict) -> Iterator:
+    cfg = _v2mssm_cfg(mseason_cfg)
+    rate = float(cfg["match_rate"])
+    for i, x in enumerate(rows):
+        rng = _v2mssm_rng(seed, i)
+        if rng.random() < rate and _v2mssm_is_seasonal_like(x, cfg):
+            yield _v2b2_replace(x, rng, "mseason", mseason_cfg)
+        else:
+            yield x
+
+
+_V2MssMatchParent = Generator
+
+
+class Generator(_V2MssMatchParent):
+    def _v2mssm_on(self) -> bool:
+        return float(_v2mssm_cfg(self._v2b2_cfgs["mseason"])["match_rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2mssm_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2mssm_on():
+            rows = _v2mssm_rows(rows, self._v2pipe_seed, self._v2b2_cfgs["mseason"])
+        return rows

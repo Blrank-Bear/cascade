@@ -1,5 +1,10 @@
 {
  "base": {},
+ "mssm60": {
+  "v2_mseason.json": {
+   "match_rate": 0.6
+  }
+ },
  "mseason30": {
   "v2_mseason.json": {
    "rate": 0.3
