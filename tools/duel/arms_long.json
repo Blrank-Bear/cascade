@@ -1,0 +1,6 @@
+{
+ "base": {},
+ "longrw30": {"v2_longrw.json": {"rate": 0.3}},
+ "lseason30": {"v2_lseason.json": {"rate": 0.3}},
+ "mrevert30": {"v2_mrevert.json": {"rate": 0.3}}
+}
