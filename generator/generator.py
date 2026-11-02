@@ -33131,3 +33131,69 @@ class Generator(_V2B2Parent):
         for n in self._v2b2_active():
             rows = _v2b2_rows(rows, self._v2pipe_seed, n, self._v2b2_cfgs[n])
         return rows
+
+
+# ── v2 longrw, matched replacement ────────────────────────────────────────────
+# Seed-0 test of longrw30 (ledger/breakdowns/longrw30_seed0_partial.txt): random replacement
+# helped the series it imitates (econ_fin -1.4% MASE, coinbase -13%, transport -4%) but displaced
+# seasonal king rows and cost energy / web_cloudops / healthcare 1-2%. Matched mode replaces only
+# king rows that already behave like random walks: variance ratio
+#   VR(k) = var(x[t+k] - x[t]) / (k * var(diff x))
+# is ~1 for a random walk and near 0 for seasonal or stationary series. A row qualifies when its
+# first finite channel has VR(k) >= `match_vr_min`; it is then replaced with prob. `match_rate`.
+# Keys in v2_longrw.json: match_rate (default 0 = off), match_vr_min, match_lag.
+_V2LRWM_TAG = 0x7A2F0016
+_V2LRWM_DEFAULTS = {"match_rate": 0.0, "match_vr_min": 0.6, "match_lag": 64}
+
+
+def _v2lrwm_cfg(longrw_cfg: dict) -> dict:
+    return {**_V2LRWM_DEFAULTS, **{k: longrw_cfg[k] for k in _V2LRWM_DEFAULTS if k in longrw_cfg}}
+
+
+def _v2lrwm_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2LRWM_TAG], spawn_key=(i,)))
+
+
+def _v2lrwm_variance_ratio(ch: np.ndarray, k: int) -> float:
+    ch = ch[np.isfinite(ch)]
+    if ch.size < 4 * k:
+        return 0.0
+    d1 = np.diff(ch)
+    v1 = float(np.var(d1))
+    if v1 <= 0.0:
+        return 0.0
+    return float(np.var(ch[k:] - ch[:-k])) / (k * v1)
+
+
+def _v2lrwm_is_rw_like(x, cfg: dict) -> bool:
+    rows = _v2_as_rows(x)
+    return _v2lrwm_variance_ratio(rows[0], int(cfg["match_lag"])) >= float(cfg["match_vr_min"])
+
+
+def _v2lrwm_rows(rows, seed: int, longrw_cfg: dict) -> Iterator:
+    cfg = _v2lrwm_cfg(longrw_cfg)
+    rate = float(cfg["match_rate"])
+    for i, x in enumerate(rows):
+        rng = _v2lrwm_rng(seed, i)
+        if rng.random() < rate and _v2lrwm_is_rw_like(x, cfg):
+            yield _v2long_replace(x, rng, "longrw", longrw_cfg)
+        else:
+            yield x
+
+
+_V2LrwMatchParent = Generator
+
+
+class Generator(_V2LrwMatchParent):
+    def _v2lrwm_on(self) -> bool:
+        return float(_v2lrwm_cfg(self._v2long_cfgs["longrw"])["match_rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2lrwm_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2lrwm_on():
+            rows = _v2lrwm_rows(rows, self._v2pipe_seed, self._v2long_cfgs["longrw"])
+        return rows

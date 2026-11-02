@@ -1,6 +1,23 @@
 {
  "base": {},
- "mseason30": {"v2_mseason.json": {"rate": 0.3}},
- "intermit30": {"v2_intermit.json": {"rate": 0.3}},
- "tbreak30": {"v2_tbreak.json": {"rate": 0.3}}
+ "mseason30": {
+  "v2_mseason.json": {
+   "rate": 0.3
+  }
+ },
+ "intermit30": {
+  "v2_intermit.json": {
+   "rate": 0.3
+  }
+ },
+ "tbreak30": {
+  "v2_tbreak.json": {
+   "rate": 0.3
+  }
+ },
+ "lrwm50": {
+  "v2_longrw.json": {
+   "match_rate": 0.5
+  }
+ }
 }
