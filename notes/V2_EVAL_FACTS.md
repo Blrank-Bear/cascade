@@ -465,3 +465,17 @@ Seeds share initialisation across corpora, so per-seed differences are much tigh
 No dose response: raising quantization above 0.5 removes the small gain. If quant is kept, 0.5 is the
 ceiling. All three INCONCLUSIVE by the fixed rules; none near the chain's 1% bar.
 Seeds 5 and 6 for jsz05 / jsz025 / q50 are running next (grid_gpu4s5, grid_gpu4s6).
+
+## Why h=720 does not move with generator changes (2026-11-02)
+
+- longrw30, lseason30 (seed 0) and the 3-seed error budget: the largest excess error is h=720,
+  but neither family moved it (longrw30 h720 -0.83%, lseason30 -0.11%) while they gained +1-4% at
+  h=64/256 in transport and econ_fin (ledger/breakdowns/*_seed0_cells.txt).
+- Cause is in the pinned training contract: CPM masks spans of 1..cpm_c_max=16 patches of
+  patch_size=32 (<=512 steps); an h=720 forecast is 23 masked patches at the end, decoded in one
+  pass (STABLE_DECODE_STEPS 768). Depths 17-23 patches are almost never trained.
+- The only generator-side lever (a per-row "mask" field: masked input, loss on the first patch
+  after a gap) is not available: v2 [training] accepted_fields = ["groups"] only.
+- The king has the same limit, so h=720 is not where the duel is decided. Strategy: maximise
+  h=64/256 gains in the domains that respond (transport, econ_fin), and stop the losses elsewhere
+  (matched replacement instead of random replacement).
