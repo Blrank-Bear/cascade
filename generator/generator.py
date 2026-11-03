@@ -33556,3 +33556,87 @@ class Generator(_V2MrovlParent):
         if self._v2mrovl_on():
             rows = _v2mrovl_rows(rows, self._v2pipe_seed, self._v2mrovl_cfg)
         return rows
+
+
+# ── v2 amovl: mean-reverting amplitude modulation of king rows ────────────────
+# Seed-0 analysis: the level overlay mrovl30 (+0.89%, no domain loss) and every mrevert/mrevs mix
+# still lose h=720 energy (-0.7..-1.0%), and more mrevs does not help (mxs30 -0.9%). Long-horizon
+# load forecasts depend on how high the next cycles swing, so amovl keeps every king row and, on a
+# `rate` fraction of them, multiplies each channel's deviation from its mean by exp(s * AR(1))
+# (half-life log-uniform, s log-uniform in scale_min..scale_max): amplitude drifts and reverts
+# while the seasonal shape stays.
+# Optional v2_amovl.json: rate (default 0 = off), scale_min, scale_max, half_life_min, half_life_max.
+_V2AMOVL_TAG = 0x7A2F001C
+_V2AMOVL_FILE = "v2_amovl.json"
+_V2AMOVL_DEFAULTS = {"rate": 0.0, "scale_min": 0.1, "scale_max": 0.5, "half_life_min": 100.0,
+                     "half_life_max": 3000.0}
+
+
+def _v2amovl_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2AMOVL_FILE
+    if not path.is_file():
+        return dict(_V2AMOVL_DEFAULTS)
+    return {**_V2AMOVL_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2amovl_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2AMOVL_TAG], spawn_key=(i,)))
+
+
+def _v2amovl_log_gain(rng, L: int, cfg: dict) -> np.ndarray:
+    """Unit-variance Gaussian AR(1) path used as a log amplitude gain."""
+    hl = _v2pool_log_uniform(rng, float(cfg["half_life_min"]), float(cfg["half_life_max"]))
+    phi = 0.5 ** (1.0 / hl)
+    eps = rng.normal(0.0, np.sqrt(1.0 - phi * phi), L)
+    y, dev = np.empty(L), rng.normal()
+    for t in range(L):
+        dev = phi * dev + eps[t]
+        y[t] = dev
+    return y
+
+
+def _v2amovl_channel(rng, ch: np.ndarray, cfg: dict) -> np.ndarray:
+    if not np.isfinite(ch).all():
+        return ch
+    mean = float(ch.mean())
+    s = _v2pool_log_uniform(rng, float(cfg["scale_min"]), float(cfg["scale_max"]))
+    out = mean + (ch - mean) * np.exp(s * _v2amovl_log_gain(rng, ch.shape[0], cfg))
+    if ch.min() >= 0.0:  # keep non-negative series non-negative
+        out = np.maximum(out, 0.0)
+    return out
+
+
+def _v2amovl_modulate(x, rng, cfg: dict):
+    rows = _v2_as_rows(x)
+    new = np.stack([_v2amovl_channel(rng, ch, cfg) for ch in rows])
+    new = new[0] if np.ndim(x["values"] if isinstance(x, dict) else x) == 1 else new
+    return {**x, "values": new} if isinstance(x, dict) else new
+
+
+def _v2amovl_rows(rows, seed: int, cfg: dict) -> Iterator:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2amovl_rng(seed, i)
+        yield _v2amovl_modulate(x, rng, cfg) if rng.random() < rate else x
+
+
+_V2AmovlParent = Generator
+
+
+class Generator(_V2AmovlParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2amovl_cfg = _v2amovl_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2amovl_on(self) -> bool:
+        return float(self._v2amovl_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2amovl_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2amovl_on():
+            rows = _v2amovl_rows(rows, self._v2pipe_seed, self._v2amovl_cfg)
+        return rows
