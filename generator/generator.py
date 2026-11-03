@@ -33381,3 +33381,92 @@ class Generator(_V2MssMatchParent):
         if self._v2mssm_on():
             rows = _v2mssm_rows(rows, self._v2pipe_seed, self._v2b2_cfgs["mseason"])
         return rows
+
+
+# ── v2 mrevs: mean reversion around a seasonal mean ───────────────────────────
+# Seed-0 analysis: mrevert (rate 0.15 / 0.3) gains econ_fin (+1.7% / +2.7%) and transport (+2.2%)
+# but pulls the model toward "revert to a flat mean", costing seasonal domains (energy -0.6% /
+# -1.3%); mseason gains exactly those seasonal domains and costs econ_fin/transport. The losses are
+# model-level (matched replacement did not remove them). mrevs teaches both behaviours in one
+# series: an AR(1) that reverts toward a SEASONAL profile (plus optional regime shifts), so the
+# model learns "revert to the seasonal path", not "revert to flat".
+# Optional v2_mrevs.json: rate (default 0 = off), half_life_min, half_life_max, regime_share,
+# season_amp_min, season_amp_max.
+_V2MREVS_TAG = 0x7A2F001A
+_V2MREVS_FILE = "v2_mrevs.json"
+_V2MREVS_DEFAULTS = {"rate": 0.0, "half_life_min": 20.0, "half_life_max": 2000.0, "regime_share": 0.3,
+                     "season_amp_min": 0.3, "season_amp_max": 2.0}
+
+
+def _v2mrevs_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2MREVS_FILE
+    if not path.is_file():
+        return dict(_V2MREVS_DEFAULTS)
+    return {**_V2MREVS_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2mrevs_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2MREVS_TAG], spawn_key=(i,)))
+
+
+def _v2mrevs_mean_path(rng, L: int, cfg: dict) -> np.ndarray:
+    """Seasonal mean (one or two periods) plus optional regime level shifts."""
+    t = np.arange(L, dtype=np.float64)
+    p1 = float(rng.choice([24, 48, 96, 144, 288, 7, 12, 52]))
+    amp = rng.uniform(float(cfg["season_amp_min"]), float(cfg["season_amp_max"]))
+    mu = amp * _v2mix_unit(_v2mix_seasonal_profile(rng, t, p1))
+    if rng.random() < 0.4 and p1 >= 24:
+        mu = mu + 0.5 * amp * _v2mix_unit(_v2mix_seasonal_profile(rng, t, 7.0 * p1))
+    if rng.random() < float(cfg["regime_share"]):
+        for c in np.sort(rng.integers(1, L, size=int(rng.integers(1, 4)))):
+            mu[c:] += rng.normal(0.0, 2.0)
+    return mu
+
+
+def _v2mrevs_series(rng, L: int, cfg: dict) -> np.ndarray:
+    hl = _v2pool_log_uniform(rng, float(cfg["half_life_min"]), float(cfg["half_life_max"]))
+    phi = 0.5 ** (1.0 / hl)
+    mu = _v2mrevs_mean_path(rng, L, cfg)
+    eps = _v2long_innovations(rng, L, {"garch_share": 0.3}) * np.sqrt(1.0 - phi * phi)
+    y, dev = np.empty(L), rng.normal()
+    for t in range(L):
+        dev = phi * dev + eps[t]
+        y[t] = mu[t] + dev
+    return _v2long_level(rng, y)
+
+
+def _v2mrevs_replace(x, rng, cfg: dict):
+    rows = _v2_as_rows(x)
+    C, L = rows.shape
+    new = np.stack([_v2mrevs_series(rng, L, cfg) for _ in range(C)])
+    new = new[0] if np.ndim(x["values"] if isinstance(x, dict) else x) == 1 else new
+    return {**x, "values": new} if isinstance(x, dict) else new
+
+
+def _v2mrevs_rows(rows, seed: int, cfg: dict) -> Iterator:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2mrevs_rng(seed, i)
+        yield _v2mrevs_replace(x, rng, cfg) if rng.random() < rate else x
+
+
+_V2MrevsParent = Generator
+
+
+class Generator(_V2MrevsParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2mrevs_cfg = _v2mrevs_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2mrevs_on(self) -> bool:
+        return float(self._v2mrevs_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2mrevs_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2mrevs_on():
+            rows = _v2mrevs_rows(rows, self._v2pipe_seed, self._v2mrevs_cfg)
+        return rows
