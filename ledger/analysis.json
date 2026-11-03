@@ -840,6 +840,10 @@
   [
    "grid_gpu4@20261103T061142Z:mix30",
    "multi-feature (3 switches differ)"
+  ],
+  [
+   "grid_gpu4@20261103T083054Z:mxs30",
+   "multi-feature (2 switches differ)"
   ]
  ]
 }

@@ -56,3 +56,4 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 - `grid_gpu4@20261102T184750Z`: invalid: same_generator
 - `grid_gpu4@20261103T061142Z:mix15`: multi-feature (2 switches differ)
 - `grid_gpu4@20261103T061142Z:mix30`: multi-feature (3 switches differ)
+- `grid_gpu4@20261103T083054Z:mxs30`: multi-feature (2 switches differ)
