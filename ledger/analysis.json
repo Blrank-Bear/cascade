@@ -574,6 +574,46 @@
    "verdict": "REJECT"
   },
   {
+   "feature": "{\"v2_mrevs.json\": {\"rate\": 0.3}}",
+   "arm_names": [
+    "mrevs30"
+   ],
+   "seeds": [
+    0
+   ],
+   "per_seed_gain": [
+    -0.004820381480400759
+   ],
+   "per_seed_wins": [
+    "0/6"
+   ],
+   "stats": {
+    "n": 1,
+    "mean": -0.004820381480400759,
+    "sd": null,
+    "t": null,
+    "min": -0.004820381480400759,
+    "max": -0.004820381480400759,
+    "all_pos": false,
+    "all_neg": true
+   },
+   "horizon_means": {
+    "64": -0.003556873251608861,
+    "256": -0.006913175167629547,
+    "720": -0.00400552365954775
+   },
+   "domain_log_mase": {
+    "econ_fin": 0.016,
+    "energy": -0.0162,
+    "healthcare": 0.0017,
+    "nature": 0.0078,
+    "sales": 0.0114,
+    "transport": 0.0196,
+    "web_cloudops": -0.0286
+   },
+   "verdict": "INCONCLUSIVE"
+  },
+  {
    "feature": "{\"v2_stall.json\": {\"rate\": 1.0}}",
    "arm_names": [
     "stall100"

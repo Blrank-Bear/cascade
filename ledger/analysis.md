@@ -16,6 +16,7 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 | `{"v2_dock.json": {"replace_rate": 0.6}}` | dr60only | [0, 1, 2] | -0.15%, +0.29%, -0.40% | -0.09% | +0.35% | -0.44 | -0.02% / +0.02% / -0.27% | **INCONCLUSIVE** |
 | `{"v2_quant.json": {"rate": 0.75}}` | q75 | [0, 1, 2] | +0.13%, -0.30%, -0.21% | -0.13% | +0.22% | -0.99 | -0.14% / -0.12% / -0.13% | **INCONCLUSIVE** |
 | `{"v2_stall.json": {"rate": 0.5}}` | stall50 | [0, 1, 2] | -0.17%, -0.02%, -0.52% | -0.24% | +0.25% | -1.63 | +0.39% / -0.48% / -0.62% | **REJECT** |
+| `{"v2_mrevs.json": {"rate": 0.3}}` | mrevs30 | [0] | -0.48% | -0.48% | — | — | -0.36% / -0.69% / -0.40% | **INCONCLUSIVE** |
 | `{"v2_stall.json": {"rate": 1.0}}` | stall100 | [0, 1, 2] | -0.01%, +0.08%, -1.65% | -0.53% | +0.97% | -0.94 | +0.67% / -0.86% / -1.40% | **INCONCLUSIVE** |
 | `{"v2_mix.json": {"rate": 0.3}}` | mix30 | [0, 1, 2] | -0.81%, -0.06%, -1.48% | -0.79% | +0.71% | -1.92 | -0.51% / -0.96% / -0.89% | **REJECT** |
 | `{"v2_history.json": {"rate": 0.55}}` | h55 | [0, 1, 2] | -2.90%, -1.11%, -3.03% | -2.35% | +1.07% | -3.79 | -3.54% / -2.04% / -1.48% | **REJECT** |
@@ -34,6 +35,7 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 - **dr60only**: econ_fin -0.003, healthcare -0.003, web_cloudops -0.003, energy -0.001, transport -0.001, nature +0.003, sales +0.006
 - **q75**: web_cloudops -0.007, healthcare -0.004, energy -0.001, econ_fin +0.001, transport +0.002, nature +0.003, sales +0.009
 - **stall50**: transport -0.005, web_cloudops +0.002, nature +0.003, econ_fin +0.003, healthcare +0.004, energy +0.004, sales +0.007
+- **mrevs30**: web_cloudops -0.029, energy -0.016, healthcare +0.002, nature +0.008, sales +0.011, econ_fin +0.016, transport +0.020
 - **stall100**: transport -0.011, econ_fin +0.002, nature +0.004, web_cloudops +0.006, energy +0.006, sales +0.010, healthcare +0.017
 - **mix30**: energy -0.002, web_cloudops -0.002, nature -0.001, healthcare +0.003, sales +0.009, transport +0.011, econ_fin +0.012
 - **h55**: healthcare +0.003, energy +0.012, web_cloudops +0.018, econ_fin +0.022, nature +0.032, sales +0.037, transport +0.041
