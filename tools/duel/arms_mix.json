@@ -1,1 +1,1 @@
-{"base": {}, "mix15": {"v2_mrevert.json": {"rate": 0.3}, "v2_mrevs.json": {"rate": 0.15}}, "mix30": {"v2_mrevert.json": {"rate": 0.3}, "v2_mrevs.json": {"rate": 0.3}}}
+{"base": {}, "mix15": {"v2_mrevert.json": {"rate": 0.3}, "v2_mrevs.json": {"rate": 0.15}}, "mxs30": {"v2_mrevert.json": {"rate": 0.3}, "v2_mrevs.json": {"rate": 0.3}}}
