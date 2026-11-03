@@ -485,3 +485,10 @@ Seeds 5 and 6 for jsz05 / jsz025 / q50 are running next (grid_gpu4s5, grid_gpu4s
   last observation (the h=720 depth that CPM's <=16-patch spans never train).
 - Closed: `upstream/cascade/direct/data.py:37` rejects any non-finite value. The generator can
   only change series content, not the masking pattern.
+
+## h=720 energy loss is systematic, not a lucky seed-0 base (2026-11-03)
+- `tools/proxy/seed_cell_bias.py`: per-seed (h x domain) gain of j100sz05/jsz025/q50 over seeds 0-7.
+- h=720 energy is negative on all 8 seeds (-0.11..-0.91%); h=64 positive on all 8 (+0.35..+1.33%).
+- Seed 0 is typical (overall -0.04% vs seed mean +0.12%): seed-0 screening is not optimistic.
+- So any perturbation of king rows so far trades h=64 gain for h=720 seasonal loss. A >= +1%
+  feature must leave what the king's seasonal rows teach at long range intact (-> mrovl gate test).
