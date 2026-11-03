@@ -4,6 +4,7 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 
 | Feature (switch vs reference) | Arm | Seeds | Per-seed gain | Mean | sd | t | Horizons (64/256/720) | Verdict |
 |---|---|---|---|---|---|---|---|---|
+| `{"v2_mrovl.json": {"gate_vr_min": 0.3, "rate": 0.6}}` | mrovlg60 | [0] | +1.13% | +1.13% | — | — | +1.57% / +1.31% / +0.49% | **INCONCLUSIVE** |
 | `{"v2_mrovl.json": {"rate": 0.3}}` | mrovl30 | [0] | +0.89% | +0.89% | — | — | +1.27% / +1.03% / +0.35% | **INCONCLUSIVE** |
 | `{"v2_amovl.json": {"rate": 0.3}}` | amovl30 | [0] | +0.87% | +0.87% | — | — | +1.27% / +1.10% / +0.23% | **INCONCLUSIVE** |
 | `{"v2_mrevert.json": {"rate": 0.3}}` | mrevert30 | [0] | +0.74% | +0.74% | — | — | +0.58% / +1.34% / +0.29% | **INCONCLUSIVE** |
@@ -26,6 +27,7 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 
 ## Per-domain effect (mean log MASE arm/reference across seeds; negative = better)
 
+- **mrovlg60**: transport -0.032, econ_fin -0.025, healthcare -0.008, nature -0.005, web_cloudops -0.004, energy +0.001, sales +0.001
 - **mrovl30**: transport -0.033, nature -0.016, econ_fin -0.011, web_cloudops -0.005, healthcare -0.002, sales +0.000, energy +0.001
 - **amovl30**: transport -0.027, nature -0.015, econ_fin -0.014, healthcare -0.005, web_cloudops -0.004, sales +0.000, energy +0.002
 - **mrevert30**: transport -0.033, econ_fin -0.026, nature -0.008, healthcare -0.005, sales +0.004, web_cloudops +0.008, energy +0.013
