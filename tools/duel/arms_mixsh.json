@@ -1,0 +1,1 @@
+{"base": {}, "mix15sh": {"v2_mrevert.json": {"rate": 0.3}, "v2_mrevs.json": {"rate": 0.15, "half_life_max": 200.0, "regime_share": 0.0}}}
