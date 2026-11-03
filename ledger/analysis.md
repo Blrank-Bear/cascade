@@ -4,6 +4,7 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 
 | Feature (switch vs reference) | Arm | Seeds | Per-seed gain | Mean | sd | t | Horizons (64/256/720) | Verdict |
 |---|---|---|---|---|---|---|---|---|
+| `{"v2_mrovl.json": {"rate": 0.3}}` | mrovl30 | [0] | +0.89% | +0.89% | — | — | +1.27% / +1.03% / +0.35% | **INCONCLUSIVE** |
 | `{"v2_mrevert.json": {"rate": 0.3}}` | mrevert30 | [0] | +0.74% | +0.74% | — | — | +0.58% / +1.34% / +0.29% | **INCONCLUSIVE** |
 | `{"v2_mrevert.json": {"match_rate": 0.7}}` | mrvm70 | [0] | +0.59% | +0.59% | — | — | +0.85% / +1.21% / -0.30% | **INCONCLUSIVE** |
 | `{"v2_jumps.json": {"max_outliers": 0.25, "max_shifts": 24.0, "rate": 1.0, "size_max": 5.0, "size_min": 0.5}}` | j100sz05 | [0, 1, 2, 3, 4, 5, 6, 7] | -0.28%, +1.00%, +0.23%, +0.68%, +0.64%, -0.43%, -0.10%, +0.34% | +0.26% | +0.50% | 1.46 | +1.37% / -0.05% / -0.55% | **INCONCLUSIVE** |
@@ -23,6 +24,7 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 
 ## Per-domain effect (mean log MASE arm/reference across seeds; negative = better)
 
+- **mrovl30**: transport -0.033, nature -0.016, econ_fin -0.011, web_cloudops -0.005, healthcare -0.002, sales +0.000, energy +0.001
 - **mrevert30**: transport -0.033, econ_fin -0.026, nature -0.008, healthcare -0.005, sales +0.004, web_cloudops +0.008, energy +0.013
 - **mrvm70**: transport -0.037, econ_fin -0.015, healthcare -0.009, web_cloudops +0.002, nature +0.002, energy +0.012, sales +0.015
 - **j100sz05**: transport -0.032, econ_fin -0.012, nature -0.006, sales -0.002, web_cloudops +0.007, energy +0.008, healthcare +0.016

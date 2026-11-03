@@ -1,6 +1,46 @@
 {
  "results": [
   {
+   "feature": "{\"v2_mrovl.json\": {\"rate\": 0.3}}",
+   "arm_names": [
+    "mrovl30"
+   ],
+   "seeds": [
+    0
+   ],
+   "per_seed_gain": [
+    0.008859896175608043
+   ],
+   "per_seed_wins": [
+    "0/6"
+   ],
+   "stats": {
+    "n": 1,
+    "mean": 0.008859896175608043,
+    "sd": null,
+    "t": null,
+    "min": 0.008859896175608043,
+    "max": 0.008859896175608043,
+    "all_pos": true,
+    "all_neg": false
+   },
+   "horizon_means": {
+    "64": 0.012716321956705648,
+    "256": 0.010315216811794809,
+    "720": 0.003533533884252363
+   },
+   "domain_log_mase": {
+    "econ_fin": -0.0112,
+    "energy": 0.0009,
+    "healthcare": -0.0018,
+    "nature": -0.0156,
+    "sales": 0.0002,
+    "transport": -0.033,
+    "web_cloudops": -0.0052
+   },
+   "verdict": "INCONCLUSIVE"
+  },
+  {
    "feature": "{\"v2_mrevert.json\": {\"rate\": 0.3}}",
    "arm_names": [
     "mrevert30"
