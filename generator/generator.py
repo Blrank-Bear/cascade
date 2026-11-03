@@ -33470,3 +33470,89 @@ class Generator(_V2MrevsParent):
         if self._v2mrevs_on():
             rows = _v2mrevs_rows(rows, self._v2pipe_seed, self._v2mrevs_cfg)
         return rows
+
+
+# ── v2 mrovl: mean-reverting deviation overlaid on king rows ──────────────────
+# Seed-0 analysis: every REPLACEMENT family pulls the model toward its own series type: mrevert
+# (+0.74%) gains econ_fin/transport and costs energy/web_cloudops (-1.3% / -1.0%) at every
+# horizon, because 30% of the king's seasonal rows are gone. mrovl keeps every king row and adds
+# to a `rate` fraction of them an AR(1) deviation (half-life log-uniform, optional regime level
+# shifts) scaled to `scale_min..scale_max` x the channel's std: the model sees mean reversion
+# without losing the king's seasonal content.
+# Optional v2_mrovl.json: rate (default 0 = off), scale_min, scale_max, half_life_min,
+# half_life_max, regime_share.
+_V2MROVL_TAG = 0x7A2F001B
+_V2MROVL_FILE = "v2_mrovl.json"
+_V2MROVL_DEFAULTS = {"rate": 0.0, "scale_min": 0.2, "scale_max": 1.0, "half_life_min": 50.0,
+                     "half_life_max": 5000.0, "regime_share": 0.3}
+
+
+def _v2mrovl_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _V2MROVL_FILE
+    if not path.is_file():
+        return dict(_V2MROVL_DEFAULTS)
+    return {**_V2MROVL_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _v2mrovl_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(
+        np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _V2MROVL_TAG], spawn_key=(i,)))
+
+
+def _v2mrovl_deviation(rng, L: int, cfg: dict) -> np.ndarray:
+    """Unit-variance AR(1) deviation around a mean with optional regime shifts."""
+    hl = _v2pool_log_uniform(rng, float(cfg["half_life_min"]), float(cfg["half_life_max"]))
+    phi = 0.5 ** (1.0 / hl)
+    mu = np.zeros(L)
+    if rng.random() < float(cfg["regime_share"]):
+        for c in np.sort(rng.integers(1, L, size=int(rng.integers(1, 4)))):
+            mu[c:] += rng.normal(0.0, 1.0)
+    eps = _v2long_innovations(rng, L, {"garch_share": 0.3}) * np.sqrt(1.0 - phi * phi)
+    y, dev = np.empty(L), rng.normal()
+    for t in range(L):
+        dev = phi * dev + eps[t]
+        y[t] = mu[t] + dev
+    return y
+
+
+def _v2mrovl_channel(rng, ch: np.ndarray, cfg: dict) -> np.ndarray:
+    sd = float(np.nanstd(ch)) if np.isfinite(ch).any() else 0.0
+    if not np.isfinite(sd) or sd <= 0.0:
+        return ch
+    s = _v2pool_log_uniform(rng, float(cfg["scale_min"]), float(cfg["scale_max"]))
+    return ch + s * sd * _v2mrovl_deviation(rng, ch.shape[0], cfg)
+
+
+def _v2mrovl_overlay(x, rng, cfg: dict):
+    rows = _v2_as_rows(x)
+    new = np.stack([_v2mrovl_channel(rng, ch, cfg) for ch in rows])
+    new = new[0] if np.ndim(x["values"] if isinstance(x, dict) else x) == 1 else new
+    return {**x, "values": new} if isinstance(x, dict) else new
+
+
+def _v2mrovl_rows(rows, seed: int, cfg: dict) -> Iterator:
+    rate = float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2mrovl_rng(seed, i)
+        yield _v2mrovl_overlay(x, rng, cfg) if rng.random() < rate else x
+
+
+_V2MrovlParent = Generator
+
+
+class Generator(_V2MrovlParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._v2mrovl_cfg = _v2mrovl_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def _v2mrovl_on(self) -> bool:
+        return float(self._v2mrovl_cfg["rate"]) > 0.0
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2mrovl_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2mrovl_on():
+            rows = _v2mrovl_rows(rows, self._v2pipe_seed, self._v2mrovl_cfg)
+        return rows
