@@ -492,3 +492,11 @@ Seeds 5 and 6 for jsz05 / jsz025 / q50 are running next (grid_gpu4s5, grid_gpu4s
 - Seed 0 is typical (overall -0.04% vs seed mean +0.12%): seed-0 screening is not optimistic.
 - So any perturbation of king rows so far trades h=64 gain for h=720 seasonal loss. A >= +1%
   feature must leave what the king's seasonal rows teach at long range intact (-> mrovl gate test).
+
+## Single-seed screening noise: mrovlg60 winner's curse (2026-11-03)
+- mrovlg60 (gated mean-reverting overlay): seed 0 +1.13%, seed 1 +0.16%, seed 2 +0.15%; mean +0.48%,
+  SD 0.56%, t 1.48. Positive on all 3 seeds, but the +1% seed-0 reading was a lucky draw.
+- Per-seed SD of one arm vs base at 28m/396 steps is ~0.5%. Picking the best of ~15 arms on one
+  seed inflates the winner by roughly +0.5%: the seed-0 numbers of mix15 / mrovl30 / amovl30
+  (+0.87..+0.89%) are likely ~+0.3..+0.5% true.
+- Direction is stable across seeds (econ_fin and transport positive on all 3), magnitude is not.
