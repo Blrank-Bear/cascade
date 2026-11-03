@@ -33640,3 +33640,53 @@ class Generator(_V2AmovlParent):
         if self._v2amovl_on():
             rows = _v2amovl_rows(rows, self._v2pipe_seed, self._v2amovl_cfg)
         return rows
+
+
+# ── v2 mrovl gate: overlay only rows that are not strongly seasonal ───────────
+# Seed-0 analysis: mrovl30 (+0.89%) still loses h=720 web_cloudops (-1.35%) and energy (-0.71%),
+# the most seasonal domains; the overlay hits every row type, so on strongly seasonal king rows
+# it blurs the long-range cycle. With `gate_vr_min` > 0 the overlay is applied (prob. `rate`, same
+# RNG stream as mrovl) only to rows whose first finite channel has VR(gate_lag) >= gate_vr_min;
+# strongly seasonal rows (VR << 1) stay untouched. Keys in v2_mrovl.json: gate_vr_min (default 0 =
+# off, ungated mrovl), gate_lag.
+_V2MROVLG_DEFAULTS = {"gate_vr_min": 0.0, "gate_lag": 64}
+
+
+def _v2mrovlg_cfg(mrovl_cfg: dict) -> dict:
+    return {**_V2MROVLG_DEFAULTS, **{k: mrovl_cfg[k] for k in _V2MROVLG_DEFAULTS if k in mrovl_cfg}}
+
+
+def _v2mrovlg_passes(x, gcfg: dict) -> bool:
+    rows = _v2_as_rows(x)
+    return _v2lrwm_variance_ratio(rows[0], int(gcfg["gate_lag"])) >= float(gcfg["gate_vr_min"])
+
+
+def _v2mrovlg_rows(rows, seed: int, cfg: dict) -> Iterator:
+    gcfg, rate = _v2mrovlg_cfg(cfg), float(cfg["rate"])
+    for i, x in enumerate(rows):
+        rng = _v2mrovl_rng(seed, i)
+        if rng.random() < rate and _v2mrovlg_passes(x, gcfg):
+            yield _v2mrovl_overlay(x, rng, cfg)
+        else:
+            yield x
+
+
+_V2MrovlGateParent = Generator
+
+
+class Generator(_V2MrovlGateParent):
+    def _v2mrovlg_on(self) -> bool:
+        return (float(self._v2mrovl_cfg["rate"]) > 0.0
+                and float(_v2mrovlg_cfg(self._v2mrovl_cfg)["gate_vr_min"]) > 0.0)
+
+    def _v2mrovl_on(self) -> bool:  # gated mode replaces the ungated overlay
+        return super()._v2mrovl_on() and not self._v2mrovlg_on()
+
+    def _v2pipe_active(self) -> bool:
+        return self._v2mrovlg_on() or super()._v2pipe_active()
+
+    def _v2pipe_rows(self, base) -> Iterator:
+        rows = super()._v2pipe_rows(base)
+        if self._v2mrovlg_on():
+            rows = _v2mrovlg_rows(rows, self._v2pipe_seed, self._v2mrovl_cfg)
+        return rows
