@@ -479,3 +479,9 @@ Seeds 5 and 6 for jsz05 / jsz025 / q50 are running next (grid_gpu4s5, grid_gpu4s
 - The king has the same limit, so h=720 is not where the duel is decided. Strategy: maximise
   h=64/256 gains in the domains that respond (transport, econ_fin), and stop the losses elsewhere
   (matched replacement instead of random replacement).
+
+## NaN gaps cannot train long decode depth (2026-11-03)
+- Idea: NaN spans > 16 patches in generator rows would make the model predict 23+ patches past the
+  last observation (the h=720 depth that CPM's <=16-patch spans never train).
+- Closed: `upstream/cascade/direct/data.py:37` rejects any non-finite value. The generator can
+  only change series content, not the masking pattern.
