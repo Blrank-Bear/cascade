@@ -59,3 +59,20 @@ Goldens are byte-identical to the unchanged king (`tests/golden/run_k13.sh`). Th
   - In the screen, the king's label / PADK / magnitude layers net about zero against our c251 v2 base.
   - Its crowning edge, if any, is the cooldown curriculum, or effects that only appear at 120M / 23,840 steps.
   - Our content overlays are the measured lever. ovlhalf on k13 + lcpr (grid_k13 / grid_k13s1) is the deciding test.
+
+## ovlhalf vs k13 + lcpr (grid_k13, seed 0, 2026-11-04)
+- Base = king + lcpr on (the cooldown curriculum fires in the screen). Arm = base + ovl level_rate 0.15 + amp_rate 0.15.
+- Round gain **+0.59%**. Per pool/round-seed: +0.30, +0.84, +0.52, +0.64, +0.69, +0.55. Positive on all 6.
+- Cells (h × domain):
+  - transport +2.17% (h64 +3.59, h256 +2.94);
+  - econ_fin +1.51% (h256 +2.74);
+  - health +0.10 (h720 -1.79);
+  - nature -0.23;
+  - energy, sales, web about 0.
+- Reading:
+  - vs the unchanged k13, the same overlays gave +1.12%. With lcpr the gap halves, so the king's cooldown curriculum is worth about 0.5% in our screen.
+  - The overlays add about +0.6% on top. That is below the ~1% level bar.
+  - Seed 1 is in progress.
+- Next lever:
+  - the overlays' gains sit in transport / econ_fin at h ≤ 256;
+  - the losses are at h720 health / nature.
