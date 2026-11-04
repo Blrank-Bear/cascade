@@ -92,3 +92,13 @@ Goldens are byte-identical to the unchanged king (`tests/golden/run_k13.sh`). Th
   - Two fixes are queued as arms_k13d, after each lane's current queue:
     - ovs20: skip the overlays on seasonal records (the new `ovs` gate);
     - ovlshort: overlay half-lives capped at 700.
+
+## Update 18:40 UTC: phase results
+| arm | s0 | s1 | mean |
+|---|---|---|---|
+| ovltrunk (ovl before the cooldown only) | +0.72 | +0.45 (4/6 pools) | ~+0.6, best so far |
+| ovlcool (ovl in the cooldown only) | +0.45 | -0.14 | ~+0.15; the s0 h720 gain did not replicate |
+| ovlhalf (all phases) | +0.58 | +0.26 | +0.42 |
+
+- **Reading:** the overlays help most when the king's cooldown runs on the clean c268 mix. Overlays in the trunk add robustness; the cooldown sharpens on the eval-like data.
+- **Queue:** arms_k13d (all-phase gates) was dropped before it started training and replaced by arms_k13e, the same gates on trunk-phase overlays: ovs20t, ovlshortt. Both seeds.
