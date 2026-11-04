@@ -31486,61 +31486,95 @@ def _k32g_labels_ok(labels, widths):
         (np.diff(labels.astype(np.int64)) >= 0).all())
 
 
+def _k32g_set_budgets(n: int) -> None:
+    """Budget rescale: the C91 / C215-LP layers open at the same stream fraction as in v1."""
+    global _C91_CHILD_BUDGET, _C215LP_STREAM_POINTS
+    _C91_CHILD_BUDGET = _k0_v1_child_budget(n)
+    _C215LP_STREAM_POINTS = _k0_v1_child_budget(n)
+
+
+def _k32g_take_carry(carry: list, width: int):
+    """First-fit the carried records into a new group; returns (group, filled, records still carried)."""
+    group, filled, rest = [], 0, []
+    for a in carry:
+        if filled + a.shape[0] <= width:
+            group.append(a)
+            filled += a.shape[0]
+        else:
+            rest.append(a)
+    return group, filled, rest
+
+
+def _k32g_values(group: list) -> np.ndarray:
+    return np.ascontiguousarray(np.concatenate(group, axis=0), dtype=np.float64)
+
+
+def _k32g_labels(widths: list) -> np.ndarray:
+    return np.repeat(np.arange(len(widths)), widths).astype(np.uint8)
+
+
+def _k32g_values_ok(values: np.ndarray) -> bool:
+    return (values.dtype == np.float64 and values.shape == (_K32G_C, _K0_L) and values.flags.c_contiguous
+            and bool(np.isfinite(values).all()) and float(np.abs(values).max()) <= _K0_F32_MAX)
+
+
+def _k32g_record(group: list) -> dict:
+    """One packed group -> the asserted {"values", "groups"} yield (one label per packed record)."""
+    widths = [int(r.shape[0]) for r in group]
+    values = _k32g_values(group)
+    labels = _k32g_labels(widths)
+    if not _k32g_values_ok(values):
+        raise RuntimeError(f"K0-32G assert-before-yield failed (values): {values.dtype} {values.shape}")
+    if not _k32g_labels_ok(labels, widths):
+        raise RuntimeError(f"K0-32G assert-before-yield failed (groups): {labels.tolist()} {widths}")
+    return {"values": values, "groups": labels}
+
+
 class Generator(_K32G_PARENT):
 
     def generate(self, n_series: int) -> Iterator[dict]:
-        global _C91_CHILD_BUDGET, _C215LP_STREAM_POINTS
         n = int(n_series)
         if n <= 0:
             return
-        _C91_CHILD_BUDGET = _k0_v1_child_budget(n)
-        _C215LP_STREAM_POINTS = _k0_v1_child_budget(n)
+        _k32g_set_budgets(n)
         self._k0_dropped_records = 0
         self._k0_dropped_groups = 0
         base = _K0Parent.generate(self, n)
+        try:
+            yield from self._k32g_records(base, n)
+        finally:
+            base.close()
+
+    def _k32g_records(self, base, n: int) -> Iterator[dict]:
         carry = []
         emitted = 0
         live = True
-        try:
-            while live and emitted < n:
-                group, filled, rest = [], 0, []
-                for a in carry:
-                    if filled + a.shape[0] <= _K32G_C:
-                        group.append(a)
-                        filled += a.shape[0]
-                    else:
-                        rest.append(a)
-                carry = rest
-                while filled < _K32G_C and len(carry) < _K0_LOOKAHEAD:
-                    try:
-                        x = next(base)
-                    except StopIteration:
-                        live = False
-                        break
-                    a = _k0_record(x)
-                    if a is None:
-                        self._k0_dropped_records += 1
-                    elif filled + a.shape[0] <= _K32G_C:
-                        group.append(a)
-                        filled += a.shape[0]
-                    else:
-                        carry.append(a)
-                if filled < _K32G_C:
-                    if live:
-                        self._k0_dropped_groups += 1
-                    continue
-                widths = [int(r.shape[0]) for r in group]
-                values = np.ascontiguousarray(np.concatenate(group, axis=0), dtype=np.float64)
-                labels = np.repeat(np.arange(len(group)), widths).astype(np.uint8)
-                if not (values.dtype == np.float64 and values.shape == (_K32G_C, _K0_L) and values.flags.c_contiguous
-                        and bool(np.isfinite(values).all()) and float(np.abs(values).max()) <= _K0_F32_MAX):
-                    raise RuntimeError(f"K0-32G assert-before-yield failed (values): {values.dtype} {values.shape}")
-                if not _k32g_labels_ok(labels, widths):
-                    raise RuntimeError(f"K0-32G assert-before-yield failed (groups): {labels.tolist()} {widths}")
-                yield {"values": values, "groups": labels}
-                emitted += 1
-        finally:
-            base.close()
+        while live and emitted < n:
+            group, filled, carry = _k32g_take_carry(carry, _K32G_C)
+            filled, live = self._k32g_fill(base, group, filled, carry)
+            if filled < _K32G_C:
+                if live:
+                    self._k0_dropped_groups += 1
+                continue
+            yield _k32g_record(group)
+            emitted += 1
+
+    def _k32g_fill(self, base, group: list, filled: int, carry: list):
+        """Pull parent records into group (first fit) until full or the lookahead is spent; (filled, live)."""
+        while filled < _K32G_C and len(carry) < _K0_LOOKAHEAD:
+            try:
+                x = next(base)
+            except StopIteration:
+                return filled, False
+            a = _k0_record(x)  # module global: PADK-NEAR rebinds it
+            if a is None:
+                self._k0_dropped_records += 1
+            elif filled + a.shape[0] <= _K32G_C:
+                group.append(a)
+                filled += a.shape[0]
+            else:
+                carry.append(a)
+        return filled, True
 
 
 # ═══════════════ v2-MAGGUARD, dict-safe (append-only, last layer) ═════════════════════════════════════════════════════
@@ -31629,28 +31663,41 @@ def _mvk_labels(g, u):
     return out, len(starts)
 
 
+def _mvk_parent_labels_ok(g: np.ndarray, n_channels: int) -> bool:
+    """The K0 labels are one contiguous, canonical block per packed record."""
+    d = np.diff(g.astype(np.int64))
+    return g.shape == (n_channels,) and int(g[0]) == 0 and bool((d >= 0).all()) and bool((d <= 1).all())
+
+
+def _mvk_uniforms(seed: int, k: int, n: int) -> np.ndarray:
+    return np.random.default_rng(np.random.SeedSequence([seed, _MVK_TAG, k])).random(n)  # _MVK_TAG read at call time
+
+
+def _mvk_labels_ok(lab: np.ndarray, g: np.ndarray) -> bool:
+    d = np.diff(lab.astype(np.int64))
+    return (lab.dtype == np.uint8 and lab.shape == g.shape and int(lab[0]) == 0
+            and bool((d >= 0).all()) and bool((d <= 1).all()) and bool(np.all(np.bincount(lab) >= 1)))
+
+
+def _mvk_relabel(y: dict, seed: int, k: int) -> dict:
+    g = np.asarray(y["groups"])
+    if not _mvk_parent_labels_ok(g, y["values"].shape[0]):
+        raise RuntimeError(f"MVKEEP: parent labels not one contiguous block per record: {g.tolist()}")
+    lab, _ = _mvk_labels(g, _mvk_uniforms(seed, k, g.shape[0]))
+    if not _mvk_labels_ok(lab, g):
+        raise RuntimeError(f"MVKEEP assert-before-yield failed (groups): {lab.tolist()}")
+    out = dict(y)
+    out["groups"] = lab
+    return out
+
+
 class Generator(_MVK_SING):
     def generate(self, n_series):
         inner = _SG_BASE.generate(self, n_series)   # SING's parent (MG2): the K0 record labels, values as SING yields them
         seed = int(getattr(self, "_seed", 0)) & ((1 << 64) - 1)
-        k = 0
         try:
-            for y in inner:
-                g = np.asarray(y["groups"])
-                if not (g.shape == (y["values"].shape[0],) and int(g[0]) == 0
-                        and bool((np.diff(g.astype(np.int64)) >= 0).all())
-                        and bool((np.diff(g.astype(np.int64)) <= 1).all())):
-                    raise RuntimeError(f"MVKEEP: parent labels not one contiguous block per record: {g.tolist()}")
-                u = np.random.default_rng(np.random.SeedSequence([seed, _MVK_TAG, k])).random(g.shape[0])
-                lab, nrec = _mvk_labels(g, u)
-                if not (lab.dtype == np.uint8 and lab.shape == g.shape and int(lab[0]) == 0
-                        and bool((np.diff(lab.astype(np.int64)) >= 0).all()) and bool((np.diff(lab.astype(np.int64)) <= 1).all())
-                        and bool(np.all(np.bincount(lab) >= 1))):
-                    raise RuntimeError(f"MVKEEP assert-before-yield failed (groups): {lab.tolist()}")
-                out = dict(y)
-                out["groups"] = lab
-                yield out
-                k += 1
+            for k, y in enumerate(inner):
+                yield _mvk_relabel(y, seed, k)
         finally:
             inner.close()
 
@@ -31664,20 +31711,32 @@ _PKN_BACK = 1024
 _PKN_RECORD = _k0_record
 
 
-def _k0_record(x):
-    a = _PKN_RECORD(x)
-    if a is None:
-        return a
+def _pkn_is_binary(row: np.ndarray) -> bool:
+    return bool(np.all((np.abs(row) < 1e-9) | (np.abs(row - 1.0) < 1e-9)))
+
+
+def _pkn_moves_late(row: np.ndarray, length: int) -> bool:
+    """The first change from row[0] lies in the last _PKN_BACK points (read at call time: LCP switches it)."""
+    nz = np.flatnonzero(row != row[0])
+    return bool(nz.size) and int(nz[0]) >= length - _PKN_BACK
+
+
+def _pkn_flatten_late_moves(a: np.ndarray) -> np.ndarray:
     out = None
     for c in range(a.shape[0]):
         row = a[c]
-        nz = np.flatnonzero(row != row[0])
-        if nz.size and int(nz[0]) >= a.shape[1] - _PKN_BACK and not bool(
-                np.all((np.abs(row) < 1e-9) | (np.abs(row - 1.0) < 1e-9))):
+        if _pkn_moves_late(row, a.shape[1]) and not _pkn_is_binary(row):
             if out is None:
                 out = np.array(a, dtype=np.float64, copy=True)
             out[c] = row[0]
     return a if out is None else out
+
+
+def _k0_record(x):
+    a = _PKN_RECORD(x)
+    if a is None:
+        return a
+    return _pkn_flatten_late_moves(a)
 
 
 
