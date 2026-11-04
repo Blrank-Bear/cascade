@@ -31858,3 +31858,175 @@ class Generator(_LcprParent):
         if bool(self._lcpr_cfg["on"]):
             _LCP_K0 = _lcpr_switch_yield(n_series, self._lcpr_cfg["trunk_frac"])
         yield from super().generate(n_series)
+
+
+# ── ovl: mean-reverting level / amplitude overlays on c268 records (switchable) ──
+# Ported from generator_c251 (mrovl + amovl). On the same c268 content, "ovlhalf" (level overlay 0.15 +
+# amplitude overlay 0.15) gained +0.59% over 5 seeds against the king's content (+1.15/+1.34/-0.17/
+# +0.66/-0.06%). Each c268 record pulled by the 32G packer passes _k0_record; this layer wraps it (after
+# PADK-NEAR, so its exactly-constant rows stay constant: their std is 0 and their deviation from the
+# mean is 0). On a `level_rate` fraction of records every channel gets an AR(1) deviation scaled to
+# level_scale_min..max x its std (optionally only rows with VR(gate_lag) >= gate_vr_min); on an
+# `amp_rate` fraction every channel's deviation from its mean is multiplied by exp(s * AR(1)). `phase`
+# picks when: "all", "trunk" (before the LCP cooldown switch) or "cooldown" (after it).
+# Optional v2_ovl.json; default rates 0 = off (records pass through as the same object).
+_OVL_TAG_LEVEL = 0x7A2F0101
+_OVL_TAG_AMP = 0x7A2F0102
+_OVL_FILE = "v2_ovl.json"
+_OVL_DEFAULTS = {"level_rate": 0.0, "level_scale_min": 0.2, "level_scale_max": 1.0,
+                 "level_half_life_min": 50.0, "level_half_life_max": 5000.0, "level_regime_share": 0.3,
+                 "gate_vr_min": 0.0, "gate_lag": 64,
+                 "amp_rate": 0.0, "amp_scale_min": 0.1, "amp_scale_max": 0.5,
+                 "amp_half_life_min": 100.0, "amp_half_life_max": 3000.0,
+                 "phase": "all"}
+_OVL_STATE = {"cfg": None, "seed": 0, "i": 0}
+_OVL_LATE = False
+_LCP_SWITCH["_OVL_LATE"] = (False, True)  # the LCP cooldown switch also flips the overlay phase
+
+
+def _ovl_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _OVL_FILE
+    if not path.is_file():
+        return dict(_OVL_DEFAULTS)
+    return {**_OVL_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _ovl_on(cfg: dict) -> bool:
+    return float(cfg["level_rate"]) > 0.0 or float(cfg["amp_rate"]) > 0.0
+
+
+def _ovl_rng(seed: int, tag: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(np.random.SeedSequence([int(seed) & ((1 << 64) - 1), tag], spawn_key=(i,)))
+
+
+def _ovl_log_uniform(rng, lo: float, hi: float) -> float:
+    return float(np.exp(rng.uniform(np.log(lo), np.log(hi))))
+
+
+def _ovl_phase_active(phase: str, late: bool) -> bool:
+    return phase == "all" or (phase == "trunk" and not late) or (phase == "cooldown" and late)
+
+
+def _ovl_ar1(rng, L: int, half_life: float, eps: np.ndarray) -> np.ndarray:
+    phi = 0.5 ** (1.0 / half_life)
+    eps = eps * np.sqrt(1.0 - phi * phi)
+    y, dev = np.empty(L), rng.normal()
+    for t in range(L):
+        dev = phi * dev + eps[t]
+        y[t] = dev
+    return y
+
+
+def _ovl_t_innovations(rng, L: int) -> np.ndarray:
+    """Unit-scale Student-t innovations, GARCH(1,1) volatility clusters on 30% of paths."""
+    df = rng.uniform(2.5, 30.0)
+    z = rng.standard_t(df, L) / np.sqrt(df / (df - 2.0))
+    if rng.random() >= 0.3:
+        return z
+    a, b = rng.uniform(0.02, 0.15), rng.uniform(0.80, 0.97)
+    b = min(b, 0.995 - a)
+    var, out = 1.0, np.empty(L)
+    for t in range(L):
+        out[t] = np.sqrt(var) * z[t]
+        var = (1.0 - a - b) + a * out[t] * out[t] + b * var
+    return out
+
+
+def _ovl_level_deviation(rng, L: int, cfg: dict) -> np.ndarray:
+    """Unit-variance AR(1) deviation around a mean with optional regime level shifts."""
+    hl = _ovl_log_uniform(rng, float(cfg["level_half_life_min"]), float(cfg["level_half_life_max"]))
+    mu = np.zeros(L)
+    if rng.random() < float(cfg["level_regime_share"]):
+        for c in np.sort(rng.integers(1, L, size=int(rng.integers(1, 4)))):
+            mu[c:] += rng.normal(0.0, 1.0)
+    return mu + _ovl_ar1(rng, L, hl, _ovl_t_innovations(rng, L))
+
+
+def _ovl_variance_ratio(ch: np.ndarray, k: int) -> float:
+    if ch.size < 4 * k:
+        return 0.0
+    v1 = float(np.var(np.diff(ch)))
+    if v1 <= 0.0:
+        return 0.0
+    return float(np.var(ch[k:] - ch[:-k])) / (k * v1)
+
+
+def _ovl_level_passes_gate(a: np.ndarray, cfg: dict) -> bool:
+    g = float(cfg["gate_vr_min"])
+    return g <= 0.0 or _ovl_variance_ratio(a[0], int(cfg["gate_lag"])) >= g
+
+
+def _ovl_level_channel(rng, ch: np.ndarray, cfg: dict) -> np.ndarray:
+    sd = float(np.std(ch))
+    if not np.isfinite(sd) or sd <= 0.0:
+        return ch
+    s = _ovl_log_uniform(rng, float(cfg["level_scale_min"]), float(cfg["level_scale_max"]))
+    return ch + s * sd * _ovl_level_deviation(rng, ch.shape[0], cfg)
+
+
+def _ovl_amp_channel(rng, ch: np.ndarray, cfg: dict) -> np.ndarray:
+    mean = float(ch.mean())
+    hl = _ovl_log_uniform(rng, float(cfg["amp_half_life_min"]), float(cfg["amp_half_life_max"]))
+    s = _ovl_log_uniform(rng, float(cfg["amp_scale_min"]), float(cfg["amp_scale_max"]))
+    gain = np.exp(s * _ovl_ar1(rng, ch.shape[0], hl, rng.normal(0.0, 1.0, ch.shape[0])))
+    out = mean + (ch - mean) * gain
+    return np.maximum(out, 0.0) if ch.min() >= 0.0 else out
+
+
+def _ovl_level(a: np.ndarray, rng, cfg: dict) -> np.ndarray:
+    return np.stack([_ovl_level_channel(rng, ch, cfg) for ch in a])
+
+
+def _ovl_amp(a: np.ndarray, rng, cfg: dict) -> np.ndarray:
+    return np.stack([_ovl_amp_channel(rng, ch, cfg) for ch in a])
+
+
+def _ovl_safe(a: np.ndarray, out: np.ndarray) -> np.ndarray:
+    """Keep the original record if an overlay ever leaves the finite float32 range."""
+    ok = bool(np.isfinite(out).all()) and float(np.abs(out).max()) <= _K0_F32_MAX
+    return np.ascontiguousarray(out, dtype=np.float64) if ok else a
+
+
+def _ovl_apply(a: np.ndarray, seed: int, i: int, cfg: dict) -> np.ndarray:
+    out = a
+    rl = _ovl_rng(seed, _OVL_TAG_LEVEL, i)
+    if rl.random() < float(cfg["level_rate"]) and _ovl_level_passes_gate(a, cfg):
+        out = _ovl_level(out, rl, cfg)
+    ra = _ovl_rng(seed, _OVL_TAG_AMP, i)
+    if ra.random() < float(cfg["amp_rate"]):
+        out = _ovl_amp(out, ra, cfg)
+    return a if out is a else _ovl_safe(a, out)
+
+
+_OVL_RECORD = _k0_record
+
+
+def _k0_record(x):
+    a = _OVL_RECORD(x)
+    cfg = _OVL_STATE["cfg"]
+    if a is None or cfg is None:
+        return a
+    i = _OVL_STATE["i"]
+    _OVL_STATE["i"] = i + 1
+    if not _ovl_phase_active(cfg["phase"], _OVL_LATE):
+        return a
+    return _ovl_apply(a, _OVL_STATE["seed"], i, cfg)
+
+
+_OvlParent = Generator
+
+
+class Generator(_OvlParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._ovl_cfg = _ovl_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series):
+        if not _ovl_on(self._ovl_cfg):
+            yield from super().generate(n_series)
+            return
+        _OVL_STATE.update(cfg=self._ovl_cfg, seed=int(getattr(self, "_seed", 0)), i=0)
+        try:
+            yield from super().generate(n_series)
+        finally:
+            _OVL_STATE.update(cfg=None, i=0)
