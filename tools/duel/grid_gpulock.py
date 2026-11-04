@@ -27,6 +27,9 @@ import grid_logged  # noqa: E402
 LOCK = Path(os.environ.get("GPU_LOCK", "/root/work/cascade/.claude-work/gpu_train.lock"))
 SCORE_LOCK = LOCK.with_name(LOCK.stem + "_score.lock")
 RETRY_PAUSE_S = 30
+# Measured 2026-11-04: the trainer's allocator cache holds ~22.6 of 24 GB, so an overlapping
+# score step fails (CUBLAS_STATUS_ALLOC_FAILED). Default: score steps also take the train lock.
+SCORE_SHARED = os.environ.get("GPU_LOCK_SCORE_SHARED") == "1"
 
 
 def is_train(args: tuple) -> bool:
@@ -41,7 +44,7 @@ def take(fh, mode: int, label: str) -> None:
 
 def run_normal(inner, args: tuple) -> dict:
     step = grid_logged.step_name(args)
-    if is_train(args):
+    if is_train(args) or not SCORE_SHARED:
         with LOCK.open("a") as fh:
             take(fh, fcntl.LOCK_EX, step)
             return inner(*args)
