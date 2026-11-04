@@ -48,3 +48,14 @@ Goldens are byte-identical to the unchanged king (`tests/golden/run_k13.sh`). Th
 3. Port ovl (mrovl + amovl) as a record-level layer; test ovlhalf on k13.
 4. MVK_P dose (0.1, then 0.3).
 5. Phase-wise content: ovl in the trunk only, or in the cooldown only.
+
+## Calibration (2026-11-04, grid_gpu4, seed 0, same 2000 windows)
+- **k13 vs old base:**
+  - k13 is the unchanged king, so its cooldown switch never fires in a 396-step run.
+  - Round gain **+0.04%**, about equal. h64 -0.03%, h256 -0.09%, h720 +0.02%.
+  - By domain: web +1.27%, econ_fin +0.67%, nature +0.45%, sales -1.82%, transport -1.11%.
+- **ovlhalf (on the old base) vs k13:** +1.12% on the same seed.
+- **Reading:**
+  - In the screen, the king's label / PADK / magnitude layers net about zero against our c251 v2 base.
+  - Its crowning edge, if any, is the cooldown curriculum, or effects that only appear at 120M / 23,840 steps.
+  - Our content overlays are the measured lever. ovlhalf on k13 + lcpr (grid_k13 / grid_k13s1) is the deciding test.
