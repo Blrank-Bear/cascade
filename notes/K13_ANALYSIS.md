@@ -76,3 +76,19 @@ Goldens are byte-identical to the unchanged king (`tests/golden/run_k13.sh`). Th
 - Next lever:
   - the overlays' gains sit in transport / econ_fin at h ≤ 256;
   - the losses are at h720 health / nature.
+
+## k13 grid results (base = king + lcpr; 2026-11-04 15:25 UTC)
+
+| arm | s0 | s1 | mean | h64 / h256 / h720 (s0) |
+|---|---|---|---|---|
+| ovlhalf (ovl 0.15 / 0.15, all phases) | +0.58 | +0.26 | +0.42 | +0.77 / +1.18 / -0.19 |
+| mvk30 (MVKEEP p 0.3) | +0.20 | -0.01 | +0.10 | -0.01 / +0.57 / +0.04 |
+| ovlcool (ovl in the cooldown only) | +0.45 | (queued) | | +0.18 / +0.62 / **+0.56** |
+
+- **mvk30:** about zero over 2 seeds, i.e. within noise. Dropped as a lever; the king's p = 0.1 stays.
+- **ovlhalf:** positive on both seeds, but only +0.42% mean. Its h720 is negative on both seeds (-0.19, -0.25).
+- **ovlcool:** the only arm with a positive h720 so far.
+  - This supports the hypothesis that all-phase overlays teach long seasonal records to drift.
+  - Two fixes are queued as arms_k13d, after each lane's current queue:
+    - ovs20: skip the overlays on seasonal records (the new `ovs` gate);
+    - ovlshort: overlay half-lives capped at 700.
