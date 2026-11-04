@@ -32066,3 +32066,62 @@ class Generator(_MvkpParent):
             yield from super().generate(n_series)
         finally:
             _MVK_P = keep
+
+
+# ── ovs: seasonal gate on the ovl overlays (switchable) ──
+# ovlhalf on k13 + lcpr (s0) gains at h <= 256 (transport, econ_fin) but loses at h720 in the
+# seasonal domains (health -1.8%, nature): slow level drift / amplitude wobble on strongly periodic
+# records teaches the model that seasonal cycles drift. v2_ovl.json "season_gate_max" s > 0 skips
+# both overlays on records whose channel-0 seasonal strength (spectral peak share, periods in
+# [season_min_period, season_max_frac * L]) is >= s. 0 (default) = ungated, byte-identical.
+# Overlay RNGs are per-record (seed, tag, i), so skipping a record shifts no other record.
+_OVS_DEFAULTS = {"season_gate_max": 0.0, "season_min_period": 4, "season_max_frac": 0.25}
+_OVS_INNER = _ovl_apply
+
+
+def _ovs_cfg(cfg: dict, key: str):
+    return cfg.get(key, _OVS_DEFAULTS[key])
+
+
+def _ovs_band(L: int, min_period: int, max_frac: float) -> tuple[int, int]:
+    """rfft bins whose period L/k lies in [min_period, max_frac * L]."""
+    lo = max(1, int(np.ceil(1.0 / max_frac)))
+    hi = L // max(1, min_period)
+    return lo, hi
+
+
+def _ovs_peak_share(power: np.ndarray, lo: int, hi: int) -> float:
+    """Largest 3-bin (peak +-1, for leakage) power share of the band, over all non-DC power."""
+    total = float(power[1:].sum())
+    if hi < lo or total <= 0.0 or not np.isfinite(total):
+        return 0.0
+    band = power[lo:hi + 1]
+    k = int(np.argmax(band)) + lo
+    return float(power[max(1, k - 1):k + 2].sum()) / total
+
+
+def _ovs_season_strength(ch: np.ndarray, min_period: int, max_frac: float) -> float:
+    L = int(ch.shape[0])
+    if L < 4 * max(1, min_period):
+        return 0.0
+    power = np.abs(np.fft.rfft(ch - ch.mean())) ** 2
+    lo, hi = _ovs_band(L, min_period, max_frac)
+    return _ovs_peak_share(power, lo, hi)
+
+
+def _ovs_is_seasonal(a: np.ndarray, cfg: dict) -> bool:
+    s = float(_ovs_cfg(cfg, "season_gate_max"))
+    if s <= 0.0:
+        return False
+    strength = _ovs_season_strength(a[0], int(_ovs_cfg(cfg, "season_min_period")),
+                                    float(_ovs_cfg(cfg, "season_max_frac")))
+    return strength >= s
+
+
+def _ovs_apply(a: np.ndarray, seed: int, i: int, cfg: dict) -> np.ndarray:
+    if _ovs_is_seasonal(a, cfg):
+        return a
+    return _OVS_INNER(a, seed, i, cfg)
+
+
+_ovl_apply = _ovs_apply

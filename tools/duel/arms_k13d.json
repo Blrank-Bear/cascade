@@ -1,0 +1,3 @@
+{"base": {"v2_lcpr.json": {"on": true}},
+ "ovs20": {"v2_lcpr.json": {"on": true}, "v2_ovl.json": {"level_rate": 0.15, "amp_rate": 0.15, "season_gate_max": 0.2}},
+ "ovlshort": {"v2_lcpr.json": {"on": true}, "v2_ovl.json": {"level_rate": 0.15, "amp_rate": 0.15, "level_half_life_max": 700, "amp_half_life_max": 700}}}
