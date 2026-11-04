@@ -990,6 +990,14 @@
   [
    "grid_gpu4s2@20261104T021725Z:ovlhalf",
    "multi-feature (2 switches differ)"
+  ],
+  [
+   "grid_gpu4s3@20261104T043344Z:ovlhalf",
+   "multi-feature (2 switches differ)"
+  ],
+  [
+   "grid_gpu4s4@20261104T043344Z:ovlhalf",
+   "multi-feature (2 switches differ)"
   ]
  ]
 }
