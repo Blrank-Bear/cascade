@@ -1,0 +1,42 @@
+{
+  "mode": "late",
+  "n": 2000,
+  "overrides": {
+    "_LCP_K0": 40
+  },
+  "seeds": {
+    "0": {
+      "count": 60,
+      "seconds": 20.41,
+      "sha256": "0f9ff3450f6245bbaeb50dc538bd1035eda333604f33536c6593fb8978e73185",
+      "shapes": {
+        "32x4096": 60
+      }
+    },
+    "1": {
+      "count": 60,
+      "seconds": 4.88,
+      "sha256": "e93d0a74f05c92dd6ab3cf76b477fc478c135a9c466d89ae0e8d5e55bbfdcbbc",
+      "shapes": {
+        "32x4096": 60
+      }
+    },
+    "12345": {
+      "count": 60,
+      "seconds": 5.49,
+      "sha256": "7cc9351e5f960135ec8a0cbb682cb88afb594ef7d54aaee46f739faad7616729",
+      "shapes": {
+        "32x4096": 60
+      }
+    },
+    "9223372036854775807": {
+      "count": 60,
+      "seconds": 4.49,
+      "sha256": "a28adf0831410120a4e6bd84c96e047add55741af7ffe55b15a65208e5d7b91a",
+      "shapes": {
+        "32x4096": 60
+      }
+    }
+  },
+  "take": 60
+}

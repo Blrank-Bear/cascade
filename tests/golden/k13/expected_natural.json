@@ -1,0 +1,40 @@
+{
+  "mode": "natural",
+  "n": 10000000,
+  "overrides": {},
+  "seeds": {
+    "0": {
+      "count": 40,
+      "seconds": 19.04,
+      "sha256": "4adb10d8ed6c8f067e57588ebc800923f66f59edb7176828695ceb550e690829",
+      "shapes": {
+        "32x4096": 40
+      }
+    },
+    "1": {
+      "count": 40,
+      "seconds": 3.79,
+      "sha256": "c27c8b44362a222da41bdfcae86d6729d2cbe9921de18699754788aabfdba939",
+      "shapes": {
+        "32x4096": 40
+      }
+    },
+    "12345": {
+      "count": 40,
+      "seconds": 4.45,
+      "sha256": "59d38c926d34ab95095843b25aecae2812c84bd7289365ae9afc92faede42225",
+      "shapes": {
+        "32x4096": 40
+      }
+    },
+    "9223372036854775807": {
+      "count": 40,
+      "seconds": 3.37,
+      "sha256": "edff6cf9eb12d9bc761ceb56d7145013895576643b7d414de77c368e96b91489",
+      "shapes": {
+        "32x4096": 40
+      }
+    }
+  },
+  "take": 40
+}
