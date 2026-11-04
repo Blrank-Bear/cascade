@@ -31816,3 +31816,45 @@ class Generator(_LCP_PARENT):
 
 
 _lcp_switch(False)
+
+
+# ── lcpr: cooldown switch placed relative to the child stream (switchable) ─────
+# The trainer's WSD cooldown is the last round(steps / 11) updates (pyramid_trainer.py), and a child
+# called with generate(n) streams 64 * (n - 2) points = 64 * (n - 2) / (32 * 4096) yields. LCP-LATE
+# switches at the fixed child yield _LCP_K0 = 10837: right for the production n (24,414,064), never
+# reached in a shorter run. With v2_lcpr.json {"on": true} the switch sits at
+# floor(yields(n) * (1 - 1/11)): 10837 again for the production n (byte-identical there), and the start
+# of the cooldown in any shorter run (e.g. the 28m screen), so the king's late curriculum and our
+# late-phase changes are measurable there. Optional v2_lcpr.json: on (default false), trunk_frac.
+_LCPR_FILE = "v2_lcpr.json"
+_LCPR_DEFAULTS = {"on": False, "trunk_frac": 10.0 / 11.0}
+
+
+def _lcpr_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _LCPR_FILE
+    if not path.is_file():
+        return dict(_LCPR_DEFAULTS)
+    return {**_LCPR_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _lcpr_child_yields(n: int) -> float:
+    return max(0, 64 * (int(n) - 2)) / float(_K32G_C * _K0_L)
+
+
+def _lcpr_switch_yield(n: int, trunk_frac: float) -> int:
+    return int(math.floor(_lcpr_child_yields(n) * float(trunk_frac)))
+
+
+_LcprParent = Generator
+
+
+class Generator(_LcprParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._lcpr_cfg = _lcpr_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series):
+        global _LCP_K0
+        if bool(self._lcpr_cfg["on"]):
+            _LCP_K0 = _lcpr_switch_yield(n_series, self._lcpr_cfg["trunk_frac"])
+        yield from super().generate(n_series)
