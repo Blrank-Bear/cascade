@@ -1,14 +1,15 @@
 # Working generator
 
-Base: Lane A king `04e226724e3b` (unchanged copy in `reference/kings/2026-10-22-04e226724e3b/`).
+Base: Lane A reign-13 king `716765dcf2f6`, the first v2 king (unchanged copy in
+`reference/kings/2026-11-04-716765dcf2f6/`). Our previous c251-based codebase, with its
+switchable feature layers, is kept in `generator_c251/` for porting.
 
-- Outermost class `Generator` = v2 pack layer: yields `{"values": (32, 4096) float32, "groups": int64[32]}`.
-- `_V2PackParent` = the king stream (pre-v2 rows), kept byte-identical to the baseline except for v2 budget constants.
-- Being refactored into atomic functions (see CLAUDE.md).
+- The outermost class `Generator` is the king's LCP-LATE layer. It yields
+  `{"values": (32, 4096) float64, "groups": uint8[32]}`.
+- Our layers are appended (never prepended), switchable and off by default (see CLAUDE.md).
 
 Checks (WSL):
-- `tests/golden/run.sh check` - byte-identical regression (inner king stream + v2 records)
-- `tests/v2/validate.py generator` - cascade SeriesValidator under the v2 policy, determinism, duplicates, channel corr
-- `tests/perf/run.sh` - throughput and memory under v2 child limits
+- `tests/golden/run_k13.sh check`: byte-identical regression (natural, plus late with the cooldown switch).
+- `tests/v2/validate.py generator`: v2 validator policy, determinism, duplicates.
 
-See `notes/WEAKNESSES.md`. Not yet a submission.
+Not yet a submission.

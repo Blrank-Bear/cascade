@@ -11,7 +11,7 @@ PY=$ROOT/.claude-work/venv/bin/python
 ACTION=${1:-check}
 N_ARG=${2:-default}
 SUITES=${3:-inner v2}
-EXP=$ROOT/tests/golden
+EXP=$ROOT/tests/golden/c251
 OUT=$EXP
 [ "$ACTION" = check ] && OUT=$ROOT/.claude-work/tmp/golden && mkdir -p "$OUT"
 export NUMBA_CACHE_DIR=$ROOT/.claude-work/cache/numba
@@ -27,7 +27,7 @@ for SUITE in $SUITES; do
   for MODE in natural late; do
     FILE=$(suite_file "$SUITE" "$MODE")
     # unshare -rn: run with no network access.
-    unshare -rn "$PY" -I "$ROOT/tests/golden/harness.py" "$ROOT/generator" \
+    unshare -rn "$PY" -I "$ROOT/tests/golden/harness.py" "$ROOT/generator_c251" \
       --cls "$(suite_class "$SUITE")" --mode "$MODE" --n "$(suite_n "$SUITE")" --out "$OUT/$FILE" > /dev/null
     [ "$ACTION" = check ] || continue
     if "$PY" -c "import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); \
