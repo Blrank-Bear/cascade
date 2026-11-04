@@ -102,3 +102,22 @@ Goldens are byte-identical to the unchanged king (`tests/golden/run_k13.sh`). Th
 
 - **Reading:** the overlays help most when the king's cooldown runs on the clean c268 mix. Overlays in the trunk add robustness; the cooldown sharpens on the eval-like data.
 - **Queue:** arms_k13d (all-phase gates) was dropped before it started training and replaced by arms_k13e, the same gates on trunk-phase overlays: ovs20t, ovlshortt. Both seeds.
+
+## Update 23:17 UTC: gates on ovltrunk (arms_k13e)
+| arm | s0 | s1 | mean |
+|---|---|---|---|
+| ovltrunk | +0.72 | +0.48 | **+0.60** |
+| ovs20t (seasonal gate 0.2) | +0.45 | +0.51 | +0.48 |
+| ovlshortt (half-lives <= 700) | +0.29 | +0.40 | +0.35 |
+
+- Neither gate fixes h720. Both remove overlay benefit (transport/econ_fin). The h720 loss is not caused by overlays on seasonal records or by long half-lives.
+- `ovs` stays in the code, off by default.
+
+### The bar we must clear
+- The level bar decays linearly from 1% (fresh king) to 0.5% over margin_warmup_blocks = 28,800 (about 4 days). It is judged on the challenger's LCB.
+- Reign 13 started 11-04 04:33 UTC, so about 0.9% now and about 0.6% around 11-07.
+- ovltrunk (+0.60% in the screen) is close but not enough yet.
+
+### Next (arms_k13f)
+- Trunk-phase dose 0.25 and 0.40, both seeds.
+- Rationale: with the cooldown kept clean, the trunk may tolerate more overlay than all-phase did.
