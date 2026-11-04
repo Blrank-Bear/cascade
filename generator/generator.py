@@ -7276,574 +7276,714 @@ class _BaseGenerator(DataGenerator):
         return emitted_points / (target_points * self._expected_budget_fraction)
 
     def generate(self, n_series: int) -> Iterator[np.ndarray]:
-
         if n_series <= 0:
             return
         rng = np.random.default_rng(self._seed)
-        max_len = self._max_len
-
-        target_points = max(1, max(n_series - 2, 1) * self._min_len)
-
-        queue: Queue[object] = Queue(maxsize=self._prefetch_depth)
-        stop = Event()
-        consumed = Event()
-        done = object()
-
-        def put(item: object) -> bool:
-            while not stop.is_set():
-                try:
-                    queue.put(item, timeout=0.1)
-                    return True
-                except Full:
-                    continue
-            return False
-
-        def produce() -> None:
-            try:
-                produced = 0
-                emitted_points = 0
-                base_seed = self._seed
-
-                chunk_index = 0
-                while produced < n_series and not stop.is_set():
-
-                    batch_size = chunk_batch_size(produced)
-                    lengths = rng.integers(
-                        self._min_len, max_len + 1, size=batch_size
-                    )
-                    take = min(batch_size, n_series - produced)
-                    chunk_points = int(lengths[:take].sum())
-                    midpoint_progress = self._progress_at(
-                        emitted_points + 0.5 * chunk_points, target_points
-                    )
-                    family_weights = self._weights_at(midpoint_progress)
-                    parameters = self._parameters_at(midpoint_progress)
-                    builders = (
-                        partial(
-                            _trend_seasonal_ar,
-                            hi_frac=self._tr_hi_frac,
-                            exc_lo=parameters["tr_exc_lo"],
-                            exc_hi=parameters["tr_exc_hi"],
-                            clean_frac=parameters["sa_clean_frac"],
-                            clean_lo=parameters["sa_clean_lo"],
-                            clean_hi=parameters["sa_clean_hi"],
-                        ),
-                        _regime_shift,
-                        partial(
-                            _multiplicative,
-                            hi_frac=self._tr_hi_frac,
-                            exc_lo=parameters["gr_exc_lo"],
-                            exc_hi=parameters["gr_exc_hi"],
-                        ),
-                        _ar2,
-                        partial(
-                            _integrated,
-                            heavy_frac=parameters["integrated_heavy_frac"],
-                            sv_frac=parameters["integrated_sv_frac"],
-                        ),
-                        _threshold_ar,
-                        _chaotic,
-                        _spectral_gp,
-                        partial(
-                            _long_memory,
-                            beta_lo=parameters["lm_beta_lo"],
-                            beta_hi_end=parameters["lm_beta_hi"],
-                        ),
-                        _ou_stochastic_vol,
-                        _physical_sensors,
-                        _seasonal_counts,
-                        _intermittent,
-                        _pulse_outlier,
-                        partial(
-                            _conditional_stability,
-                            calm_noise=parameters["cs_calm_noise"],
-                        ),
-                        partial(
-                            _step_level,
-                            jumps_lo=parameters["step_level_jumps_lo"],
-                            jumps_hi=parameters["step_level_jumps_hi"],
-                            exact_frac=parameters["step_level_exact_frac"],
-                            noise_lo=parameters["step_level_noise_lo"],
-                            noise_hi=parameters["step_level_noise_hi"],
-                        ),
-                        _vol_regime_switch,
-                        _weekly_demand,
-                        _tidal_harmonic,
-                        _flow_recession,
-                        _bounded_counts,
-                        _held_rate,
-                        _spiky_price,
-                        _epi_decay,
-                        _sticky_station,
-                        _grid_flow,
-                        _price_shock,
-                        _coastal_residual,
-                        partial(_cs_flat, calm_noise=parameters["cs_calm_noise"]),
-                        partial(_cs_drift, calm_noise=parameters["cs_calm_noise"]),
-                        _cs_countwalk,
-                        _cs_pulse,
-                        _rk4_chaotic,
-                        _tidal_constituents,
-                        _envelope_mod,
-                        _rate_counts,
-                        _dispersion_counts,
-                        _dispatch_blocks,
-
-                        *self._cf_builders,
-
-                        _cycle_profile,
-                        _transport_flow_tail,
-                        _capacity_counts,
-                        _overdispersed_counts,
-                        _reported_epi_counts,
-                        _retail_promo_tail,
-                        _heavy_traffic_counts,
-                        _sparse_admin_counts,
-                        _storm_outage_counts,
-                        _gauge_rain,
-                        _store_sales_panel,
-                        _web_session_attr,
-                        _broadband_path_attr,
-                        _cluster_job_attr,
-                        _sales_promo_stockout_panel,
-                        _settle_hold,
-                        _web_traffic_plateau,
-                        _biz_day_counts,
-                        _weekly_web_counts,
-                        _dispatch_price,
-                        _epi_season_decay,
-                        _weekday_ledger_counts,
-                        _surveillance_counts,
-                        _pull_counter_ramp,
-                        _weekly_cycle_downloads,
-                        _hourly_social_counts,
-                        _intraday_event_counts,
-                        _intraday_spot_price,
-                        _road_commute_counts,
-                    )
-                    current_observation = {
-                        key.removeprefix("observation."): value
-                        for key, value in parameters.items()
-                        if key.startswith("observation.")
-                    }
-                    domain_weights = self._domain_weights_at(midpoint_progress)
-                    if domain_weights is not None:
-                        fam_ids = dispatch_domain_mix(
-                            base_seed,
-                            chunk_index,
-                            batch_size,
-                            domain_weights,
-                            family_weights,
-                            self._domain_pool_indices,
-                        )
-                    else:
-
-                        dispatch_u = rng.random(batch_size)
-                        fam_base = _DISPATCH_REF_CDF.searchsorted(
-                            dispatch_u, side="right"
-                        )
-                        if np.array_equal(family_weights, _DISPATCH_REF):
-                            fam_ids = fam_base
-                        else:
-                            excess = np.maximum(
-                                family_weights - _DISPATCH_REF, 0.0
-                            )
-                            excess_total = excess.sum()
-                            if excess_total <= 0.0:
-                                fam_ids = fam_base
-                            else:
-                                dispatch_rng = np.random.default_rng(
-                                    np.random.SeedSequence(
-                                        (base_seed, chunk_index,
-                                         _DISPATCH_STREAM_FAM, 0, 0)
-                                    )
-                                )
-                                keep_u = dispatch_rng.random(batch_size)
-                                move_u = dispatch_rng.random(batch_size)
-                                keep_prob = np.where(
-                                    _DISPATCH_REF > 0.0,
-                                    np.minimum(
-                                        np.divide(
-                                            family_weights,
-                                            _DISPATCH_REF,
-                                            out=np.ones_like(family_weights),
-                                            where=_DISPATCH_REF > 0.0,
-                                        ),
-                                        1.0,
-                                    ),
-                                    1.0,
-                                )
-                                excess_cdf = np.cumsum(excess / excess_total)
-                                excess_cdf /= excess_cdf[-1]
-                                released = keep_u >= keep_prob[fam_base]
-                                fam_ids = fam_base.copy()
-                                fam_ids[released] = excess_cdf.searchsorted(
-                                    move_u[released], side="right"
-                                )
-
-                    slots = np.arange(batch_size, dtype=np.int64)
-
-                    tags = (0, 1, 2, 3) if parameters["tail_rebase_rate"] > 0.0 \
-                        else (0, 1, 2)
-                    stream_words = []
-                    for tag in tags:
-                        cols = _ss_columns(
-                            [base_seed, chunk_index, fam_ids, slots, tag],
-                            batch_size,
-                        )
-                        stream_words.append(
-                            None if cols is None else _pcg64_seed_words(cols)
-                        )
-                    n_tags = len(tags)
-
-                    def _stream(tag: int, slot: int, fam: int):
-                        words = stream_words[tag]
-                        if words is None:
-                            return np.random.default_rng(
-                                np.random.SeedSequence(
-                                    (base_seed, chunk_index, fam, slot, tag)
-                                )
-                            )
-                        return _row_pool(n_tags).seeded(tag, *words[slot])
-
-                    chunk: list[np.ndarray | None] = [None] * batch_size
-
-                    support_protected = np.zeros(batch_size, dtype=bool)
-                    native_no_pad = np.zeros(batch_size, dtype=bool)
-
-                    def _build_family_group(fam: int, idx: np.ndarray) -> None:
-                        family = _FAMILIES[fam]
-                        preserve_nonnegative = family in {
-                            "sticky_station",
-                            "epi_decay",
-                            "multiplicative",
-                            "physical_sensors",
-                            "seasonal_counts",
-                            "intermittent",
-
-                            "grid_flow",
-                            "spiky_price",
-                            "price_shock",
-
-                            "tidal_constituents",
-
-                            "flow_recession",
-
-                            "rate_counts",
-
-                            "dispersion_counts",
-
-                            "dispatch_blocks",
-
-                            "ops_diurnal_traffic",
-                            "ops_saturating_feedback",
-                            "ops_counter_reset",
-                            "ops_latency_queue",
-                            "ops_rate_plateau",
-                            "epi_renewal",
-                            "admin_reporting_counts",
-                            "clinical_bounded_vitals",
-
-                            "met_bounded_atom", "met_wind_speed",
-                            "wet_dry_intermittent", "regime_dwell_zerosparse",
-                            "hawkes_marked", "transport_flow",
-                            "retail_promo_intermittent",
-
-                            "energy_load_price_solar",
-
-                            "heavy_traffic_counts",
-                            "sparse_admin_counts",
-                            "storm_outage_counts",
-                            "gauge_rain",
-                            "store_sales_panel",
-                            "sales_promo_stockout_panel",
-                            "web_session_attr",
-                            "broadband_path_attr",
-                            "cluster_job_attr",
-                            "settle_hold",
-                            "web_traffic_plateau",
-                            "biz_day_counts",
-                            "weekly_web_counts",
-                            "weekly_demand",
-                        }
-                        clean = family in _CLEAN
-                        preserve_integers = family in {
-                            "sticky_station",
-                            "epi_decay",
-                            "seasonal_counts",
-                            "intermittent",
-                            "rate_counts",
-                            "dispersion_counts",
-                            "dispatch_blocks",
-
-                            "epi_renewal",
-                            "admin_reporting_counts",
-                            "ops_counter_reset",
-                            "ops_diurnal_traffic",
-                            "retail_promo_intermittent",
-                            "heavy_traffic_counts",
-                            "sparse_admin_counts",
-                            "storm_outage_counts",
-                            "sales_promo_stockout_panel",
-                            "web_session_attr",
-                            "cluster_job_attr",
-                            "web_traffic_plateau",
-                            "biz_day_counts",
-                            "weekly_web_counts",
-                        }
-                        allow_reverse = family in {
-                            "trend_seasonal_ar",
-                            "multiplicative",
-                            "spectral_gp",
-                            "long_memory",
-                        }
-                        allow_range_artifacts = family != "integrated"
-
-                        anchor = int(idx[0])
-                        policy = self._support_contract
-                        builder = builders[fam]
-                        metadata_builder = getattr(builder, "with_metadata", None)
-                        flags = None
-                        if metadata_builder is not None and (
-                            policy["restore_bounded_native"] or policy["guard_mixing"]
-                            or self._temporal_integrity["native_integer_flags"]
-                        ):
-                            block, flags = metadata_builder(
-                                _stream(0, anchor, fam), int(idx.size), max_len
-                            )
-                        else:
-                            block = builder(_stream(0, anchor, fam), int(idx.size), max_len)
-                        bounded_mask = _native_bounded_mask(flags, int(idx.size))
-                        if (preserve_integers and flags is not None
-                                and self._temporal_integrity["native_integer_flags"]):
-                            preserve_integers = np.asarray(flags["integer"], dtype=bool)
-                            if preserve_integers.shape != (idx.size,):
-                                raise ValueError("native integer flags must have one value per row")
-                        restore_mask = bounded_mask & policy["restore_bounded_native"]
-
-                        native_rows = block[restore_mask].copy() if restore_mask.any() else None
-                        signed_family = family in _NATIVE_SIGNED_FAMILIES
-                        clip_nonnegative = preserve_nonnegative and not (
-                            policy["restore_signed"] and signed_family
-                        )
-                        if policy["guard_mixing"]:
-                            support_protected[idx] = bounded_mask | signed_family
-                        native_no_pad[idx] = restore_mask
-                        if clean:
-                            block = _sanitize(block)
-                        else:
-                            block = _sanitize(
-                                _measurement_artifacts(
-                                    _stream(1, anchor, fam),
-                                    block,
-                                    preserve_nonnegative=preserve_nonnegative,
-                                    clip_nonnegative=clip_nonnegative,
-                                    repair_degenerate_rollback=policy["repair_degenerate_rollback"],
-                                    preserve_integers=preserve_integers,
-                                    allow_reverse=allow_reverse,
-                                    allow_range_artifacts=allow_range_artifacts,
-                                    preserve_pre_gamma_shape=(
-                                        (_HARRY_TIDAL_GAMMA_BYPASS
-                                         and family == "tidal_constituents")
-                                        or (_HARRY_I029_GRID_FLOW_GAMMA_BYPASS
-                                            and family == "grid_flow")
-                                    ),
-                                    **(dict(current_observation, time_warp_rate=0.0,
-                                            global_dilation_rate=0.0)
-                                       if family in _V444_CLOCK_FAMILIES
-                                       else current_observation),
-                                )
-                            )
-                        if not preserve_nonnegative:
-                            post_rng = _stream(2, anchor, fam)
-                            block = _apply_nonneg_integer_prior(
-                                post_rng, block,
-                                integer_min_std=parameters[
-                                    "nonneg_integer_min_std"
-                                ],
-                                integer_min_std_frac=parameters[
-                                    "nonneg_integer_min_std_frac"
-                                ],
-                                integer_frac=parameters[
-                                    "nonneg_integer_frac"
-                                ],
-                                flat_level_spread=parameters[
-                                    "flat_level_spread"
-                                ],
-                            )
-                            block = _apply_zero_inflation(post_rng, block)
-
-                        if (parameters["tail_rebase_rate"] > 0.0
-                                and family not in ("ops_counter_reset", "pull_counter_ramp", "epi_season_decay", "surveillance_counts",
-                                           "epi_renewal", "reported_epi_counts", "epi_decay")):
-                            block = _apply_tail_rebase(
-                                _stream(3, anchor, fam), block,
-                                parameters["tail_rebase_rate"],
-                                periodic_continue=True,
-                                preserve_periodic_native=(
-                                    _TIDAL_NATIVE_PERIODIC_ENABLED
-                                    and family == "tidal_constituents"
-                                ),
-                            )
-                        block = _apply_unique_idea(
-                            family, block, base_seed, chunk_index, fam
-                        )
-                        if clip_nonnegative:
-                            np.maximum(block, 0.0, out=block)
-                        if native_rows is not None:
-                            block[restore_mask] = native_rows
-                        block = _flow_reporting_memory(
-                            block, family, base_seed, chunk_index, fam,
-                            int(idx[0]), 8, 'rolling', 0.5)
-                        for k in range(int(idx.size)):
-                            slot = int(idx[k])
-                            length = int(lengths[slot])
-                            chunk[slot] = np.ascontiguousarray(
-                                block[k, :length], dtype=np.float64
-                            )
-
-                    groups = []
-                    for fam in range(len(_FAMILIES)):
-                        fam_idx = np.nonzero(fam_ids == fam)[0]
-                        if fam_idx.size:
-                            groups.append((fam, fam_idx))
-                    if _PRODUCER_WORKERS > 1 and len(groups) > 1:
-                        _run_family_groups(_build_family_group, groups)
-                    else:
-                        for fam, fam_idx in groups:
-                            _build_family_group(fam, fam_idx)
-
-                    if self._min_len == max_len:
-                        mix_rate = parameters["augment.tsmixup"]
-                        mixed = np.nonzero(rng.random(batch_size) < mix_rate)[0]
-                        mix_alpha = parameters["tsmixup_source_alpha"]
-                        mix_scaled = parameters["tsmixup_mean_scale"] >= 0.5
-                        for series_i in mixed:
-                            source = chunk[series_i]
-                            if source is None:
-                                continue
-                            n_other = int(rng.integers(1, 3))
-                            others = rng.integers(0, batch_size, size=n_other)
-
-                            alpha = np.ones(n_other + 1)
-                            alpha[0] = mix_alpha
-                            weights = rng.dirichlet(alpha)
-                            if self._support_contract["guard_mixing"] and not _mixup_support_compatible(
-                                support_protected, int(series_i), others
-                            ):
-                                continue
-                            parts = [source]
-                            valid = True
-                            for other_i in others:
-                                other = chunk[int(other_i)]
-                                if other is None:
-                                    valid = False
-                                    break
-                                parts.append(other)
-                            if not valid:
-                                continue
-                            if mix_scaled:
-
-                                unit = []
-                                for part in parts:
-                                    s = float(_v2_mean(np.abs(part)))
-                                    unit.append(part / s if s > 1e-12 else part)
-                                source_scale = float(_v2_mean(np.abs(source)))
-                                combined = weights[0] * unit[0]
-                                for j, part in enumerate(unit[1:]):
-                                    combined = combined + weights[j + 1] * part
-                                if source_scale > 1e-12:
-                                    combined = combined * source_scale
-                            else:
-                                combined = weights[0] * parts[0]
-                                for j, part in enumerate(parts[1:]):
-                                    combined = combined + weights[j + 1] * part
-                            chunk[series_i] = _sanitize(combined)
-
-                    pad_rate = parameters["augment.pad_prefix"]
-                    padded = np.nonzero(rng.random(batch_size) < pad_rate)[0]
-                    for series_i in padded:
-                        series = chunk[series_i]
-                        if series is None or series.size < 8:
-                            continue
-                        cut = int(rng.integers(series.size // 8, 3 * series.size // 4))
-                        if native_no_pad[series_i]:
-                            continue
-                        series[:cut] = series[cut]
-
-                    if self._renewal_persistence["rate"] > 0.0:
-                        _apply_renewal_persistence(
-                            chunk, fam_ids, base_seed, chunk_index,
-                            self._renewal_persistence,
-                        )
-
-                    if _CAS1_INTERIOR_REBASE_RATE > 0.0:
-                        for fam, fam_idx in groups:
-                            family = _FAMILIES[fam]
-                            if family == "ops_counter_reset":
-                                continue
-                            parent_rows = np.stack(
-                                [chunk[int(i)] for i in fam_idx]
-                            )
-                            rows = parent_rows.copy()
-                            for episode_i, endpoint in enumerate(
-                                    _CAS1_INTERIOR_REBASE_ENDPOINTS):
-                                episode_rng = np.random.default_rng(
-                                    np.random.SeedSequence(
-                                        (base_seed, chunk_index, fam,
-                                         _CAS1_INTERIOR_REBASE_STAGE + episode_i)
-                                    )
-                                )
-                                proposed = _apply_interior_rebase_episode(
-                                    episode_rng, parent_rows.copy(),
-                                    _CAS1_INTERIOR_REBASE_RATE,
-                                    endpoint=endpoint,
-                                    periodic_continue=True,
-                                    preserve_periodic_native=(
-                                        _TIDAL_NATIVE_PERIODIC_ENABLED
-                                        and family == "tidal_constituents"
-                                    ),
-                                    route_mode=_CAS1_INTERIOR_REBASE_ROUTE,
-                                )
-                                changed = proposed != parent_rows
-                                rows[changed] = proposed[changed]
-                            for k, slot in enumerate(fam_idx):
-                                chunk[int(slot)] = rows[k]
-                    if not put((chunk, take)):
-                        return
-                    while not stop.is_set():
-                        if consumed.wait(timeout=0.1):
-                            consumed.clear()
-                            break
-                    if stop.is_set():
-                        return
-                    produced += take
-                    emitted_points += chunk_points
-                    chunk_index += 1
-            except BaseException as exc:
-                put(exc)
-            finally:
-                put(done)
-
-        producer = Thread(target=produce, name="cascade-generator", daemon=True)
+        target_points = self._target_points(n_series)
+        channel = _ProducerChannel(self._prefetch_depth)
+        producer = Thread(
+            target=self._produce, args=(channel, rng, n_series, target_points),
+            name="cascade-generator", daemon=True,
+        )
         producer.start()
         try:
-            while True:
-                item = queue.get()
-                if item is done:
-                    break
-                if isinstance(item, BaseException):
-                    raise item
-                chunk, take = item
-                for arr in chunk[:take]:
-
-                    if arr is None:
-                        raise RuntimeError("internal: unfilled series slot")
-                    yield arr
-                consumed.set()
+            yield from self._consume(channel)
         finally:
-            stop.set()
+            channel.stop.set()
             producer.join(timeout=1.0)
+
+    def _target_points(self, n_series: int) -> int:
+        return max(1, max(n_series - 2, 1) * self._min_len)
+
+    def _consume(self, channel: "_ProducerChannel") -> Iterator[np.ndarray]:
+        while True:
+            item = channel.queue.get()
+            if item is channel.done:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            chunk, take = item
+            yield from _checked_chunk_rows(chunk, take)
+            channel.consumed.set()
+
+    def _produce(self, channel: "_ProducerChannel", rng, n_series: int, target_points: int) -> None:
+        try:
+            self._produce_chunks(channel, rng, n_series, target_points)
+        except BaseException as exc:
+            channel.put(exc)
+        finally:
+            channel.put(channel.done)
+
+    def _produce_chunks(self, channel: "_ProducerChannel", rng, n_series: int, target_points: int) -> None:
+        produced = 0
+        emitted_points = 0
+        chunk_index = 0
+        while produced < n_series and not channel.stop.is_set():
+            chunk, take, chunk_points = self._produce_chunk(
+                rng, chunk_index, produced, emitted_points, n_series, target_points)
+            if not channel.put((chunk, take)):
+                return
+            if not channel.wait_consumed():
+                return
+            produced += take
+            emitted_points += chunk_points
+            chunk_index += 1
+
+    def _produce_chunk(self, rng, chunk_index: int, produced: int, emitted_points: int,
+                       n_series: int, target_points: int):
+        batch_size = chunk_batch_size(produced)
+        lengths = self._chunk_lengths(rng, batch_size)
+        take = min(batch_size, n_series - produced)
+        chunk_points = int(lengths[:take].sum())
+        progress = self._progress_at(emitted_points + 0.5 * chunk_points, target_points)
+        family_weights = self._weights_at(progress)
+        parameters = self._parameters_at(progress)
+        fam_ids = self._dispatch_families(rng, chunk_index, batch_size, family_weights, progress)
+        state = self._new_chunk_state(chunk_index, batch_size, lengths, parameters, fam_ids)
+        groups = _family_groups(fam_ids)
+        _run_group_builds(lambda fam, idx: self._build_family_group(state, fam, idx), groups)
+        self._apply_chunk_tsmixup(rng, state)
+        _apply_chunk_pad_prefix(rng, state)
+        self._apply_chunk_renewal_persistence(state)
+        _apply_chunk_interior_rebase(state, groups)
+        return state.chunk, take, chunk_points
+
+    def _chunk_lengths(self, rng, batch_size: int) -> np.ndarray:
+        return rng.integers(self._min_len, self._max_len + 1, size=batch_size)
+
+    def _new_chunk_state(self, chunk_index: int, batch_size: int, lengths, parameters, fam_ids) -> "_ChunkState":
+        stream_words, n_tags = _chunk_stream_words(
+            self._seed, chunk_index, fam_ids, batch_size, parameters["tail_rebase_rate"])
+        return _ChunkState(
+            fam_ids=fam_ids,
+            base_seed=self._seed,
+            chunk_index=chunk_index,
+            batch_size=batch_size,
+            max_len=self._max_len,
+            lengths=lengths,
+            parameters=parameters,
+            builders=self._chunk_builders(parameters),
+            observation=_observation_parameters(parameters),
+            stream_words=stream_words,
+            n_tags=n_tags,
+        )
+
+    def _chunk_builders(self, parameters) -> tuple:
+        return (
+            *self._builders_trend_block(parameters),
+            *self._builders_regime_block(parameters),
+            *self._builders_physical_block(),
+            *self._cf_builders,
+            *_builders_domain_block(),
+        )
+
+    def _builders_trend_block(self, parameters) -> tuple:
+        return (
+            partial(
+                _trend_seasonal_ar,
+                hi_frac=self._tr_hi_frac,
+                exc_lo=parameters["tr_exc_lo"],
+                exc_hi=parameters["tr_exc_hi"],
+                clean_frac=parameters["sa_clean_frac"],
+                clean_lo=parameters["sa_clean_lo"],
+                clean_hi=parameters["sa_clean_hi"],
+            ),
+            _regime_shift,
+            partial(
+                _multiplicative,
+                hi_frac=self._tr_hi_frac,
+                exc_lo=parameters["gr_exc_lo"],
+                exc_hi=parameters["gr_exc_hi"],
+            ),
+            _ar2,
+            partial(
+                _integrated,
+                heavy_frac=parameters["integrated_heavy_frac"],
+                sv_frac=parameters["integrated_sv_frac"],
+            ),
+            _threshold_ar,
+            _chaotic,
+            _spectral_gp,
+            partial(
+                _long_memory,
+                beta_lo=parameters["lm_beta_lo"],
+                beta_hi_end=parameters["lm_beta_hi"],
+            ),
+            _ou_stochastic_vol,
+            _physical_sensors,
+            _seasonal_counts,
+            _intermittent,
+            _pulse_outlier,
+        )
+
+    def _builders_regime_block(self, parameters) -> tuple:
+        return (
+            partial(
+                _conditional_stability,
+                calm_noise=parameters["cs_calm_noise"],
+            ),
+            partial(
+                _step_level,
+                jumps_lo=parameters["step_level_jumps_lo"],
+                jumps_hi=parameters["step_level_jumps_hi"],
+                exact_frac=parameters["step_level_exact_frac"],
+                noise_lo=parameters["step_level_noise_lo"],
+                noise_hi=parameters["step_level_noise_hi"],
+            ),
+            _vol_regime_switch,
+            _weekly_demand,
+            _tidal_harmonic,
+            _flow_recession,
+            _bounded_counts,
+            _held_rate,
+            _spiky_price,
+            _epi_decay,
+            _sticky_station,
+            _grid_flow,
+            _price_shock,
+            _coastal_residual,
+            partial(_cs_flat, calm_noise=parameters["cs_calm_noise"]),
+            partial(_cs_drift, calm_noise=parameters["cs_calm_noise"]),
+        )
+
+    def _builders_physical_block(self) -> tuple:
+        return (
+            _cs_countwalk,
+            _cs_pulse,
+            _rk4_chaotic,
+            _tidal_constituents,
+            _envelope_mod,
+            _rate_counts,
+            _dispersion_counts,
+            _dispatch_blocks,
+        )
+
+    def _dispatch_families(self, rng, chunk_index: int, batch_size: int, family_weights, progress):
+        domain_weights = self._domain_weights_at(progress)
+        if domain_weights is not None:
+            return dispatch_domain_mix(
+                self._seed, chunk_index, batch_size, domain_weights,
+                family_weights, self._domain_pool_indices,
+            )
+        return _dispatch_by_reference(rng, self._seed, chunk_index, batch_size, family_weights)
+
+    def _build_family_group(self, state: "_ChunkState", fam: int, idx: np.ndarray) -> None:
+        family = _FAMILIES[fam]
+        anchor = int(idx[0])
+        policy = self._support_contract
+        block, flags = self._build_raw_block(state, fam, anchor, int(idx.size))
+        bounded_mask = _native_bounded_mask(flags, int(idx.size))
+        preserve_integers = self._resolve_preserve_integers(family, flags, idx)
+        restore_mask = bounded_mask & policy["restore_bounded_native"]
+        native_rows = _copy_masked_rows(block, restore_mask)
+        signed_family = family in _NATIVE_SIGNED_FAMILIES
+        clip_nonnegative = _clip_nonnegative_for(family, policy, signed_family)
+        _record_support_flags(state, policy, idx, bounded_mask, signed_family, restore_mask)
+        block = self._observe_block(state, family, fam, anchor, block, policy,
+                                    clip_nonnegative, preserve_integers)
+        block = _apply_post_prior(state, family, fam, anchor, block)
+        block = _apply_family_tail_rebase(state, family, fam, anchor, block)
+        block = _apply_unique_idea(family, block, state.base_seed, state.chunk_index, fam)
+        block = _finish_family_block(block, clip_nonnegative, native_rows, restore_mask)
+        block = _flow_reporting_memory(
+            block, family, state.base_seed, state.chunk_index, fam, anchor, 8, 'rolling', 0.5)
+        _store_family_rows(state, idx, block)
+
+    def _build_raw_block(self, state: "_ChunkState", fam: int, anchor: int, n_rows: int):
+        builder = state.builders[fam]
+        rng = state.stream(0, anchor, fam)
+        metadata_builder = getattr(builder, "with_metadata", None)
+        if metadata_builder is not None and self._wants_native_metadata():
+            return metadata_builder(rng, n_rows, state.max_len)
+        return builder(rng, n_rows, state.max_len), None
+
+    def _wants_native_metadata(self) -> bool:
+        policy = self._support_contract
+        return bool(policy["restore_bounded_native"] or policy["guard_mixing"]
+                    or self._temporal_integrity["native_integer_flags"])
+
+    def _resolve_preserve_integers(self, family: str, flags, idx: np.ndarray):
+        preserve_integers = family in _PRESERVE_INTEGER_FAMILIES
+        if not (preserve_integers and flags is not None
+                and self._temporal_integrity["native_integer_flags"]):
+            return preserve_integers
+        native = np.asarray(flags["integer"], dtype=bool)
+        if native.shape != (idx.size,):
+            raise ValueError("native integer flags must have one value per row")
+        return native
+
+    def _observe_block(self, state: "_ChunkState", family: str, fam: int, anchor: int, block,
+                       policy, clip_nonnegative: bool, preserve_integers):
+        if family in _CLEAN:
+            return _sanitize(block)
+        return _sanitize(
+            _measurement_artifacts(
+                state.stream(1, anchor, fam),
+                block,
+                preserve_nonnegative=family in _PRESERVE_NONNEGATIVE_FAMILIES,
+                clip_nonnegative=clip_nonnegative,
+                repair_degenerate_rollback=policy["repair_degenerate_rollback"],
+                preserve_integers=preserve_integers,
+                allow_reverse=family in _ALLOW_REVERSE_FAMILIES,
+                allow_range_artifacts=family != "integrated",
+                preserve_pre_gamma_shape=_preserve_pre_gamma_shape(family),
+                **_family_observation(state.observation, family),
+            )
+        )
+
+    def _apply_chunk_tsmixup(self, rng, state: "_ChunkState") -> None:
+        if self._min_len != self._max_len:
+            return
+        params = state.parameters
+        mixed = np.nonzero(rng.random(state.batch_size) < params["augment.tsmixup"])[0]
+        guard = self._support_contract["guard_mixing"]
+        for series_i in mixed:
+            _mixup_one_series(rng, state, int(series_i), guard)
+
+    def _apply_chunk_renewal_persistence(self, state: "_ChunkState") -> None:
+        if self._renewal_persistence["rate"] > 0.0:
+            _apply_renewal_persistence(
+                state.chunk, state.fam_ids, state.base_seed, state.chunk_index,
+                self._renewal_persistence,
+            )
+
+
+# ─── _BaseGenerator.generate helpers (one atomic task each) ───
+
+_PRESERVE_NONNEGATIVE_FAMILIES = frozenset({
+    "sticky_station",
+    "epi_decay",
+    "multiplicative",
+    "physical_sensors",
+    "seasonal_counts",
+    "intermittent",
+    "grid_flow",
+    "spiky_price",
+    "price_shock",
+    "tidal_constituents",
+    "flow_recession",
+    "rate_counts",
+    "dispersion_counts",
+    "dispatch_blocks",
+    "ops_diurnal_traffic",
+    "ops_saturating_feedback",
+    "ops_counter_reset",
+    "ops_latency_queue",
+    "ops_rate_plateau",
+    "epi_renewal",
+    "admin_reporting_counts",
+    "clinical_bounded_vitals",
+    "met_bounded_atom", "met_wind_speed",
+    "wet_dry_intermittent", "regime_dwell_zerosparse",
+    "hawkes_marked", "transport_flow",
+    "retail_promo_intermittent",
+    "energy_load_price_solar",
+    "heavy_traffic_counts",
+    "sparse_admin_counts",
+    "storm_outage_counts",
+    "gauge_rain",
+    "store_sales_panel",
+    "sales_promo_stockout_panel",
+    "web_session_attr",
+    "broadband_path_attr",
+    "cluster_job_attr",
+    "settle_hold",
+    "web_traffic_plateau",
+    "biz_day_counts",
+    "weekly_web_counts",
+    "weekly_demand",
+})
+
+_PRESERVE_INTEGER_FAMILIES = frozenset({
+    "sticky_station",
+    "epi_decay",
+    "seasonal_counts",
+    "intermittent",
+    "rate_counts",
+    "dispersion_counts",
+    "dispatch_blocks",
+    "epi_renewal",
+    "admin_reporting_counts",
+    "ops_counter_reset",
+    "ops_diurnal_traffic",
+    "retail_promo_intermittent",
+    "heavy_traffic_counts",
+    "sparse_admin_counts",
+    "storm_outage_counts",
+    "sales_promo_stockout_panel",
+    "web_session_attr",
+    "cluster_job_attr",
+    "web_traffic_plateau",
+    "biz_day_counts",
+    "weekly_web_counts",
+})
+
+_ALLOW_REVERSE_FAMILIES = frozenset({
+    "trend_seasonal_ar",
+    "multiplicative",
+    "spectral_gp",
+    "long_memory",
+})
+
+_NO_TAIL_REBASE_FAMILIES = (
+    "ops_counter_reset", "pull_counter_ramp", "epi_season_decay", "surveillance_counts",
+    "epi_renewal", "reported_epi_counts", "epi_decay",
+)
+
+
+class _ProducerChannel:
+    """Bounded queue plus stop/consumed events shared by producer and consumer."""
+
+    def __init__(self, depth: int) -> None:
+        self.queue: Queue[object] = Queue(maxsize=depth)
+        self.stop = Event()
+        self.consumed = Event()
+        self.done = object()
+
+    def put(self, item: object) -> bool:
+        while not self.stop.is_set():
+            try:
+                self.queue.put(item, timeout=0.1)
+                return True
+            except Full:
+                continue
+        return False
+
+    def wait_consumed(self) -> bool:
+        while not self.stop.is_set():
+            if self.consumed.wait(timeout=0.1):
+                self.consumed.clear()
+                break
+        return not self.stop.is_set()
+
+
+class _ChunkState:
+    """Everything one chunk build shares across its family groups."""
+
+    def __init__(self, *, fam_ids, base_seed, chunk_index, batch_size, max_len, lengths, parameters,
+                 builders, observation, stream_words, n_tags) -> None:
+        self.fam_ids = fam_ids
+        self.base_seed = base_seed
+        self.chunk_index = chunk_index
+        self.batch_size = batch_size
+        self.max_len = max_len
+        self.lengths = lengths
+        self.parameters = parameters
+        self.builders = builders
+        self.observation = observation
+        self.stream_words = stream_words
+        self.n_tags = n_tags
+        self.chunk: list[np.ndarray | None] = [None] * batch_size
+        self.support_protected = np.zeros(batch_size, dtype=bool)
+        self.native_no_pad = np.zeros(batch_size, dtype=bool)
+
+    def stream(self, tag: int, slot: int, fam: int):
+        words = self.stream_words[tag]
+        if words is None:
+            return _seeded_row_rng(self.base_seed, self.chunk_index, fam, slot, tag)
+        return _row_pool(self.n_tags).seeded(tag, *words[slot])
+
+
+def _checked_chunk_rows(chunk, take: int) -> Iterator[np.ndarray]:
+    for arr in chunk[:take]:
+        if arr is None:
+            raise RuntimeError("internal: unfilled series slot")
+        yield arr
+
+
+def _seeded_row_rng(base_seed, chunk_index: int, fam: int, slot: int, tag: int):
+    return np.random.default_rng(np.random.SeedSequence((base_seed, chunk_index, fam, slot, tag)))
+
+
+def _builders_domain_block() -> tuple:
+    return (
+        _cycle_profile,
+        _transport_flow_tail,
+        _capacity_counts,
+        _overdispersed_counts,
+        _reported_epi_counts,
+        _retail_promo_tail,
+        _heavy_traffic_counts,
+        _sparse_admin_counts,
+        _storm_outage_counts,
+        _gauge_rain,
+        _store_sales_panel,
+        _web_session_attr,
+        _broadband_path_attr,
+        _cluster_job_attr,
+        _sales_promo_stockout_panel,
+        _settle_hold,
+        _web_traffic_plateau,
+        _biz_day_counts,
+        _weekly_web_counts,
+        _dispatch_price,
+        _epi_season_decay,
+        _weekday_ledger_counts,
+        _surveillance_counts,
+        _pull_counter_ramp,
+        _weekly_cycle_downloads,
+        _hourly_social_counts,
+        _intraday_event_counts,
+        _intraday_spot_price,
+        _road_commute_counts,
+    )
+
+
+def _observation_parameters(parameters) -> dict:
+    return {
+        key.removeprefix("observation."): value
+        for key, value in parameters.items()
+        if key.startswith("observation.")
+    }
+
+
+def _family_observation(observation: dict, family: str) -> dict:
+    if family in _V444_CLOCK_FAMILIES:
+        return dict(observation, time_warp_rate=0.0, global_dilation_rate=0.0)
+    return observation
+
+
+def _preserve_pre_gamma_shape(family: str) -> bool:
+    return bool(
+        (_HARRY_TIDAL_GAMMA_BYPASS and family == "tidal_constituents")
+        or (_HARRY_I029_GRID_FLOW_GAMMA_BYPASS and family == "grid_flow")
+    )
+
+
+def _dispatch_by_reference(rng, base_seed, chunk_index: int, batch_size: int, family_weights):
+    fam_base = _DISPATCH_REF_CDF.searchsorted(rng.random(batch_size), side="right")
+    if np.array_equal(family_weights, _DISPATCH_REF):
+        return fam_base
+    excess = np.maximum(family_weights - _DISPATCH_REF, 0.0)
+    excess_total = excess.sum()
+    if excess_total <= 0.0:
+        return fam_base
+    return _dispatch_release_excess(base_seed, chunk_index, batch_size, family_weights,
+                                    fam_base, excess, excess_total)
+
+
+def _dispatch_release_excess(base_seed, chunk_index: int, batch_size: int, family_weights,
+                             fam_base, excess, excess_total):
+    dispatch_rng = np.random.default_rng(
+        np.random.SeedSequence((base_seed, chunk_index, _DISPATCH_STREAM_FAM, 0, 0)))
+    keep_u = dispatch_rng.random(batch_size)
+    move_u = dispatch_rng.random(batch_size)
+    keep_prob = _dispatch_keep_probability(family_weights)
+    excess_cdf = _normalized_cdf(excess / excess_total)
+    released = keep_u >= keep_prob[fam_base]
+    fam_ids = fam_base.copy()
+    fam_ids[released] = excess_cdf.searchsorted(move_u[released], side="right")
+    return fam_ids
+
+
+def _dispatch_keep_probability(family_weights):
+    ratio = np.divide(family_weights, _DISPATCH_REF,
+                      out=np.ones_like(family_weights), where=_DISPATCH_REF > 0.0)
+    return np.where(_DISPATCH_REF > 0.0, np.minimum(ratio, 1.0), 1.0)
+
+
+def _normalized_cdf(probabilities):
+    cdf = np.cumsum(probabilities)
+    cdf /= cdf[-1]
+    return cdf
+
+
+def _chunk_stream_tags(tail_rebase_rate: float) -> tuple:
+    return (0, 1, 2, 3) if tail_rebase_rate > 0.0 else (0, 1, 2)
+
+
+def _chunk_stream_words(base_seed, chunk_index: int, fam_ids, batch_size: int, tail_rebase_rate: float):
+    slots = np.arange(batch_size, dtype=np.int64)
+    tags = _chunk_stream_tags(tail_rebase_rate)
+    words = [_tag_stream_words(base_seed, chunk_index, fam_ids, slots, tag, batch_size) for tag in tags]
+    return words, len(tags)
+
+
+def _tag_stream_words(base_seed, chunk_index: int, fam_ids, slots, tag: int, batch_size: int):
+    cols = _ss_columns([base_seed, chunk_index, fam_ids, slots, tag], batch_size)
+    return None if cols is None else _pcg64_seed_words(cols)
+
+
+def _family_groups(fam_ids) -> list:
+    groups = []
+    for fam in range(len(_FAMILIES)):
+        fam_idx = np.nonzero(fam_ids == fam)[0]
+        if fam_idx.size:
+            groups.append((fam, fam_idx))
+    return groups
+
+
+def _run_group_builds(build, groups: list) -> None:
+    if _PRODUCER_WORKERS > 1 and len(groups) > 1:
+        _run_family_groups(build, groups)
+        return
+    for fam, fam_idx in groups:
+        build(fam, fam_idx)
+
+
+def _copy_masked_rows(block, mask):
+    return block[mask].copy() if mask.any() else None
+
+
+def _clip_nonnegative_for(family: str, policy, signed_family: bool) -> bool:
+    return family in _PRESERVE_NONNEGATIVE_FAMILIES and not (policy["restore_signed"] and signed_family)
+
+
+def _record_support_flags(state: _ChunkState, policy, idx, bounded_mask, signed_family: bool, restore_mask) -> None:
+    if policy["guard_mixing"]:
+        state.support_protected[idx] = bounded_mask | signed_family
+    state.native_no_pad[idx] = restore_mask
+
+
+def _apply_post_prior(state: _ChunkState, family: str, fam: int, anchor: int, block):
+    if family in _PRESERVE_NONNEGATIVE_FAMILIES:
+        return block
+    post_rng = state.stream(2, anchor, fam)
+    params = state.parameters
+    block = _apply_nonneg_integer_prior(
+        post_rng, block,
+        integer_min_std=params["nonneg_integer_min_std"],
+        integer_min_std_frac=params["nonneg_integer_min_std_frac"],
+        integer_frac=params["nonneg_integer_frac"],
+        flat_level_spread=params["flat_level_spread"],
+    )
+    return _apply_zero_inflation(post_rng, block)
+
+
+def _apply_family_tail_rebase(state: _ChunkState, family: str, fam: int, anchor: int, block):
+    rate = state.parameters["tail_rebase_rate"]
+    if not (rate > 0.0 and family not in _NO_TAIL_REBASE_FAMILIES):
+        return block
+    return _apply_tail_rebase(
+        state.stream(3, anchor, fam), block, rate,
+        periodic_continue=True,
+        preserve_periodic_native=_tidal_native_periodic(family),
+    )
+
+
+def _tidal_native_periodic(family: str) -> bool:
+    return bool(_TIDAL_NATIVE_PERIODIC_ENABLED and family == "tidal_constituents")
+
+
+def _finish_family_block(block, clip_nonnegative: bool, native_rows, restore_mask):
+    if clip_nonnegative:
+        np.maximum(block, 0.0, out=block)
+    if native_rows is not None:
+        block[restore_mask] = native_rows
+    return block
+
+
+def _store_family_rows(state: _ChunkState, idx, block) -> None:
+    for k in range(int(idx.size)):
+        slot = int(idx[k])
+        length = int(state.lengths[slot])
+        state.chunk[slot] = np.ascontiguousarray(block[k, :length], dtype=np.float64)
+
+
+def _mixup_one_series(rng, state: _ChunkState, series_i: int, guard: bool) -> None:
+    source = state.chunk[series_i]
+    if source is None:
+        return
+    others, weights = _draw_mixup_partners(rng, state)
+    if guard and not _mixup_support_compatible(state.support_protected, series_i, others):
+        return
+    parts = _collect_mixup_parts(state.chunk, source, others)
+    if parts is None:
+        return
+    state.chunk[series_i] = _sanitize(_mixup_combine(parts, weights, state.parameters))
+
+
+def _draw_mixup_partners(rng, state: _ChunkState):
+    n_other = int(rng.integers(1, 3))
+    others = rng.integers(0, state.batch_size, size=n_other)
+    alpha = np.ones(n_other + 1)
+    alpha[0] = state.parameters["tsmixup_source_alpha"]
+    return others, rng.dirichlet(alpha)
+
+
+def _collect_mixup_parts(chunk, source, others):
+    parts = [source]
+    for other_i in others:
+        other = chunk[int(other_i)]
+        if other is None:
+            return None
+        parts.append(other)
+    return parts
+
+
+def _mixup_combine(parts, weights, parameters):
+    if parameters["tsmixup_mean_scale"] >= 0.5:
+        return _mixup_combine_scaled(parts, weights)
+    return _weighted_sum(parts, weights)
+
+
+def _mixup_combine_scaled(parts, weights):
+    unit = [_unit_mean_abs(part) for part in parts]
+    source_scale = float(_v2_mean(np.abs(parts[0])))
+    combined = _weighted_sum(unit, weights)
+    if source_scale > 1e-12:
+        combined = combined * source_scale
+    return combined
+
+
+def _unit_mean_abs(part):
+    s = float(_v2_mean(np.abs(part)))
+    return part / s if s > 1e-12 else part
+
+
+def _weighted_sum(parts, weights):
+    combined = weights[0] * parts[0]
+    for j, part in enumerate(parts[1:]):
+        combined = combined + weights[j + 1] * part
+    return combined
+
+
+def _apply_chunk_pad_prefix(rng, state: _ChunkState) -> None:
+    padded = np.nonzero(rng.random(state.batch_size) < state.parameters["augment.pad_prefix"])[0]
+    for series_i in padded:
+        _pad_prefix_one(rng, state, int(series_i))
+
+
+def _pad_prefix_one(rng, state: _ChunkState, series_i: int) -> None:
+    series = state.chunk[series_i]
+    if series is None or series.size < 8:
+        return
+    cut = int(rng.integers(series.size // 8, 3 * series.size // 4))
+    if state.native_no_pad[series_i]:
+        return
+    series[:cut] = series[cut]
+
+
+def _apply_chunk_interior_rebase(state: _ChunkState, groups: list) -> None:
+    if not _CAS1_INTERIOR_REBASE_RATE > 0.0:
+        return
+    for fam, fam_idx in groups:
+        if _FAMILIES[fam] != "ops_counter_reset":
+            _interior_rebase_group(state, fam, fam_idx)
+
+
+def _interior_rebase_group(state: _ChunkState, fam: int, fam_idx) -> None:
+    parent_rows = np.stack([state.chunk[int(i)] for i in fam_idx])
+    rows = parent_rows.copy()
+    for episode_i, endpoint in enumerate(_CAS1_INTERIOR_REBASE_ENDPOINTS):
+        proposed = _interior_rebase_episode_rows(state, fam, parent_rows, episode_i, endpoint)
+        changed = proposed != parent_rows
+        rows[changed] = proposed[changed]
+    for k, slot in enumerate(fam_idx):
+        state.chunk[int(slot)] = rows[k]
+
+
+def _interior_rebase_episode_rows(state: _ChunkState, fam: int, parent_rows, episode_i: int, endpoint):
+    episode_rng = np.random.default_rng(np.random.SeedSequence(
+        (state.base_seed, state.chunk_index, fam, _CAS1_INTERIOR_REBASE_STAGE + episode_i)))
+    return _apply_interior_rebase_episode(
+        episode_rng, parent_rows.copy(),
+        _CAS1_INTERIOR_REBASE_RATE,
+        endpoint=endpoint,
+        periodic_continue=True,
+        preserve_periodic_native=_tidal_native_periodic(_FAMILIES[fam]),
+        route_mode=_CAS1_INTERIOR_REBASE_ROUTE,
+    )
 
 @njit(cache=False, fastmath=False, nogil=True)
 def _ar1_kernel_nb(innov: np.ndarray, phi: np.ndarray) -> np.ndarray:
@@ -28308,6 +28448,1744 @@ class Generator(_SLParent):
         return "c1933"
 
 
+# ═══════════════ c251-P1: exact fast kernel for the long-cycle lag menu (_cycle_menu_errors, uid76's #1 hotspot). ═══════════════
+# Same per-(row, lag) arithmetic as uid76's kernel: template phases from the SAME compare-swap networks (_v2_cm_medians),
+# |observed - template| with the same subtraction/abs, the SAME 8-lane sequential sums + ((r0+r1)+(r2+r3))+((r4+r5)+(r6+r7))
+# per 128-point leaf (0.0 + x == x for the abs values, never -0.0), the same leaf combination / abort tests and the same
+# final ((0.0 + bound) / points) / span. Two changes, both exact:
+#  (a) slice views indexed by range() induction variables (no signed-index wraparound fix-ups) -> LLVM vectorises
+#      the loops; the per-lane operation sequence is unchanged (no reassociation: fastmath stays OFF);
+#  (b) provable early abort inside a leaf: every 32 points the partial lanes are combined with the same tree; all
+#      addends are >= 0 and IEEE round-to-nearest addition is monotone, so the partial combination is <= the full
+#      leaf value; if ((0.0 + partial) / points) / span > limit then the full leaf bound also exceeds it, and uid76
+#      aborts at the end of that leaf (errors = inf) -- the same inf is written. Only at leaves where uid76 can abort
+#      with a bound that grows inside the leaf (leaf 0; leaf 1 of a 4-leaf menu). Non-aborted values are bit-identical.
+#  (c) the abort test f(b) = ((0.0 + b) / points) / span > limit is evaluated as b >= x*, where x* is the smallest
+#      double with f(x*) > limit, found per row by bisection over the (order-preserving) bit patterns of [0, +inf]:
+#      f is monotone non-decreasing (correctly rounded divisions by positive numbers), so b >= x* <=> f(b) > limit.
+#  (d) count == 1 lags (median of one cycle = the history itself) read the history slice directly instead of a copy.
+from numba import njit as _c251_njit
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_cm_tmpl(h, base, lag, count, start, stop, tm):
+    n = stop - start
+    if n <= 0:
+        return
+    out = tm[start:stop]
+    q = base + start
+    if count == 1:
+        h0 = h[q:q + n]
+        for i in range(n):
+            out[i] = h0[i]
+    elif count == 3:
+        h0 = h[q:q + n]; h1 = h[q + lag:q + lag + n]; h2 = h[q + 2 * lag:q + 2 * lag + n]
+        for i in range(n):
+            a0 = h0[i]; a1 = h1[i]; a2 = h2[i]
+            t = a0 if a0 < a1 else a1; a1 = a1 if a0 < a1 else a0; a0 = t
+            t = a1 if a1 < a2 else a2; a2 = a2 if a1 < a2 else a1; a1 = t
+            t = a0 if a0 < a1 else a1; a1 = a1 if a0 < a1 else a0; a0 = t
+            out[i] = a1
+    elif count == 5:
+        h0 = h[q:q + n]; h1 = h[q + lag:q + lag + n]; h2 = h[q + 2 * lag:q + 2 * lag + n]
+        h3 = h[q + 3 * lag:q + 3 * lag + n]; h4 = h[q + 4 * lag:q + 4 * lag + n]
+        for i in range(n):
+            a0 = h0[i]; a1 = h1[i]; a2 = h2[i]; a3 = h3[i]; a4 = h4[i]
+            t = a0 if a0 < a1 else a1; a1 = a1 if a0 < a1 else a0; a0 = t
+            t = a3 if a3 < a4 else a4; a4 = a4 if a3 < a4 else a3; a3 = t
+            t = a0 if a0 < a3 else a3; a3 = a3 if a0 < a3 else a0; a0 = t
+            t = a1 if a1 < a4 else a4; a4 = a4 if a1 < a4 else a1; a1 = t
+            t = a1 if a1 < a2 else a2; a2 = a2 if a1 < a2 else a1; a1 = t
+            t = a2 if a2 < a3 else a3; a3 = a3 if a2 < a3 else a2; a2 = t
+            t = a1 if a1 < a2 else a2; a2 = a2 if a1 < a2 else a1; a1 = t
+            out[i] = a2
+    elif count == 7:
+        h0 = h[q:q + n]; h1 = h[q + lag:q + lag + n]; h2 = h[q + 2 * lag:q + 2 * lag + n]
+        h3 = h[q + 3 * lag:q + 3 * lag + n]; h4 = h[q + 4 * lag:q + 4 * lag + n]
+        h5 = h[q + 5 * lag:q + 5 * lag + n]; h6 = h[q + 6 * lag:q + 6 * lag + n]
+        for i in range(n):
+            a0 = h0[i]; a1 = h1[i]; a2 = h2[i]; a3 = h3[i]; a4 = h4[i]; a5 = h5[i]; a6 = h6[i]
+            t = a0 if a0 < a5 else a5; a5 = a5 if a0 < a5 else a0; a0 = t
+            t = a0 if a0 < a3 else a3; a3 = a3 if a0 < a3 else a0; a0 = t
+            t = a1 if a1 < a6 else a6; a6 = a6 if a1 < a6 else a1; a1 = t
+            t = a2 if a2 < a4 else a4; a4 = a4 if a2 < a4 else a2; a2 = t
+            t = a0 if a0 < a1 else a1; a1 = a1 if a0 < a1 else a0; a0 = t
+            t = a3 if a3 < a5 else a5; a5 = a5 if a3 < a5 else a3; a3 = t
+            t = a2 if a2 < a6 else a6; a6 = a6 if a2 < a6 else a2; a2 = t
+            t = a2 if a2 < a3 else a3; a3 = a3 if a2 < a3 else a2; a2 = t
+            t = a3 if a3 < a6 else a6; a6 = a6 if a3 < a6 else a3; a3 = t
+            t = a4 if a4 < a5 else a5; a5 = a5 if a4 < a5 else a4; a4 = t
+            t = a1 if a1 < a4 else a4; a4 = a4 if a1 < a4 else a1; a1 = t
+            t = a1 if a1 < a3 else a3; a3 = a3 if a1 < a3 else a1; a1 = t
+            t = a3 if a3 < a4 else a4; a4 = a4 if a3 < a4 else a3; a3 = t
+            out[i] = a3
+    else:
+        buf = np.empty(count, dtype=np.float64)
+        mid = count // 2
+        for p in range(start, stop):
+            for c in range(count):
+                x = h[base + p + c * lag]
+                k = c
+                while k > 0 and buf[k - 1] > x:
+                    buf[k] = buf[k - 1]
+                    k -= 1
+                buf[k] = x
+            tm[p] = buf[mid]
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_cm_fill(tm, lag, lo, u):
+    v = lo
+    hi = lo + 128
+    while v < hi:
+        m0 = v % lag
+        seg = hi - v
+        if lag - m0 < seg:
+            seg = lag - m0
+        src = tm[m0:m0 + seg]
+        dst = u[v - lo:v - lo + seg]
+        for t in range(seg):
+            dst[t] = src[t]
+        v += seg
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_cm_f(x, points, sp):
+    return ((0.0 + x) / points) / sp
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_cm_xstar(points, sp, lim):
+    lo = np.int64(0)
+    hi = np.int64(0x7FF0000000000000)
+    buf = np.empty(1, dtype=np.float64)
+    bits = buf.view(np.int64)
+    bits[0] = lo
+    if _c251_cm_f(buf[0], points, sp) > lim:
+        return buf[0]
+    while hi - lo > 1:
+        mid = lo + (hi - lo) // 2
+        bits[0] = mid
+        if _c251_cm_f(buf[0], points, sp) > lim:
+            hi = mid
+        else:
+            lo = mid
+    bits[0] = hi
+    return buf[0]
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_cm_fill_h(h, base, lag, lo, u):
+    v = lo
+    hi = lo + 128
+    while v < hi:
+        m0 = v % lag
+        seg = hi - v
+        if lag - m0 < seg:
+            seg = lag - m0
+        src = h[base + m0:base + m0 + seg]
+        dst = u[v - lo:v - lo + seg]
+        for t in range(seg):
+            dst[t] = src[t]
+        v += seg
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_cycle_menu_errors(history, observed, span, limit, lags, cols, count, fit_points, errors):
+    rows = history.shape[0]
+    points = observed.shape[1]
+    leaves = points // 128
+    nl = lags.shape[0]
+    tm = np.empty(points, dtype=np.float64)
+    u = np.empty(128, dtype=np.float64)
+    for r in range(rows):
+        lim = limit[r]
+        if not lim >= 0.0:
+            for j in range(nl):
+                errors[r, cols[j]] = np.inf
+            continue
+        sp = span[r]
+        xs = _c251_cm_xstar(points, sp, lim)
+        h = history[r]
+        o = observed[r]
+        for j in range(nl):
+            lag = lags[j]
+            base = fit_points - count * lag
+            done = 0
+            partial = 0.0
+            left = 0.0
+            aborted = False
+            for leaf in range(leaves):
+                lo = leaf * 128
+                hi = lo + 128
+                if count == 1:
+                    if lag >= hi:
+                        uL = h[base + lo:base + hi]
+                    else:
+                        _c251_cm_fill_h(h, base, lag, lo, u)
+                        uL = u
+                else:
+                    need = hi if hi < lag else lag
+                    if done < need:
+                        _c251_cm_tmpl(h, base, lag, count, done, need, tm)
+                        done = need
+                    if lag >= hi:
+                        uL = tm[lo:hi]
+                    else:
+                        _c251_cm_fill(tm, lag, lo, u)
+                        uL = u
+                oL = o[lo:hi]
+                early = (leaf == 0 and leaves > 1) or (leaf == 1 and leaves == 4)
+                a0 = 0.0; a1 = 0.0; a2 = 0.0; a3 = 0.0; a4 = 0.0; a5 = 0.0; a6 = 0.0; a7 = 0.0
+                stop = False
+                for g in range(4):
+                    for i in range(4):
+                        b = 32 * g + 8 * i
+                        a0 += abs(oL[b] - uL[b])
+                        a1 += abs(oL[b + 1] - uL[b + 1])
+                        a2 += abs(oL[b + 2] - uL[b + 2])
+                        a3 += abs(oL[b + 3] - uL[b + 3])
+                        a4 += abs(oL[b + 4] - uL[b + 4])
+                        a5 += abs(oL[b + 5] - uL[b + 5])
+                        a6 += abs(oL[b + 6] - uL[b + 6])
+                        a7 += abs(oL[b + 7] - uL[b + 7])
+                    if early and g < 3:
+                        lb = ((a0 + a1) + (a2 + a3)) + ((a4 + a5) + (a6 + a7))
+                        bb = lb if leaf == 0 else partial + lb
+                        if bb >= xs:
+                            stop = True
+                            break
+                if stop:
+                    aborted = True
+                    break
+                value = ((a0 + a1) + (a2 + a3)) + ((a4 + a5) + (a6 + a7))
+                if leaves == 2:
+                    bound = value if leaf == 0 else partial + value
+                    partial = value if leaf == 0 else partial
+                else:
+                    if leaf == 0:
+                        partial = value
+                        bound = value
+                    elif leaf == 1:
+                        partial = partial + value
+                        bound = partial
+                    elif leaf == 2:
+                        left = value
+                        bound = partial
+                    else:
+                        bound = partial + (left + value)
+                if leaf < leaves - 1 and bound >= xs:
+                    aborted = True
+                    break
+                if leaf == leaves - 1:
+                    errors[r, cols[j]] = ((0.0 + bound) / points) / sp
+            if aborted:
+                errors[r, cols[j]] = np.inf
+
+
+_cycle_menu_errors = _c251_cycle_menu_errors
+
+
+# ═══════════════ c251-P2: exact fast driver for the lag-menu validation (_validated_cycle_menu). ═══════════════
+# Per row, uid76 needs only: span (q90 - q10 with floors), anchor/hold/away/limit, the FIRST argmin lag of the finite
+# errors, whether it passes, and the second validation of that lag. Exact replicas, one numba pass per row:
+#  * quantiles: numpy 'linear' method verbatim -- vi = float(n - 1) * q, prev = floor(vi), g = vi - prev, then
+#    numpy's _lerp (a + (b - a) * g, or b - (b - a) * (1 - g) where g >= 0.5) on the exact order statistics; only
+#    the span uses them and span = max(hi - lo, |x|max * 1e-12, 1e-12) >= 1e-12 > 0, so the sign of a selected zero
+#    can never reach it.
+#  * anchor = numpy median of 16 = (0.0 + ((0.0 + s7) + s8)) / 2.0 (np.mean's identity-start add.reduce; the same
+#    formula uid76's own _v2_lcv_kernel uses); hold = ((0.0 + pairwise(|o - anchor|)) / m) / span with uid76's
+#    pairwise replica _v2_pw (verified equal to np.add.reduce along a row, identity start); away = count / H (a mean
+#    of booleans is an exact integer count); limit as np.where/np.minimum.
+#  * argmin: first index of the minimum of where(errors < inf, errors, inf) (all-inf rows -> 0), as np.argmin.
+#  * second validation (_long_cycle_validation, row-independent) only for rows whose first pass holds: uid76 returns
+#    first_pass & second_pass, so the skipped rows are False either way. No RNG is used anywhere in the menu.
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_kth(a, lo, hi, k):
+    # in-place selection on a[lo:hi] (Hoare partition, median-of-3): afterwards a[k] holds the k-th smallest value
+    # of the range and a[lo:k] <= a[k] <= a[k+1:hi]. Values only (finite inputs).
+    hi = hi - 1
+    while hi > lo:
+        mid = (lo + hi) >> 1
+        x = a[lo]; y = a[mid]; z = a[hi]
+        if x < y:
+            if y < z:
+                p = y
+            elif x < z:
+                p = z
+            else:
+                p = x
+        else:
+            if x < z:
+                p = x
+            elif y < z:
+                p = z
+            else:
+                p = y
+        i = lo
+        j = hi
+        while i <= j:
+            while a[i] < p:
+                i += 1
+            while p < a[j]:
+                j -= 1
+            if i <= j:
+                t = a[i]; a[i] = a[j]; a[j] = t
+                i += 1
+                j -= 1
+        if k <= j:
+            hi = j
+        elif k >= i:
+            lo = i
+        else:
+            return
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_qlin2(buf, n, q0, q1, out):
+    # numpy.quantile(row, (q0, q1)) method='linear' for a NaN-free row held in buf[:n] (buf is reordered); q0 <= q1.
+    # numpy: vi = (n - 1) * q; prev = floor(vi) (-1 if vi >= n - 1, 0 if vi < 0), next = prev + 1 (same clamps);
+    # gamma = vi - prev; _lerp(arr[prev], arr[next], gamma).
+    lo = 0
+    for qi in range(2):
+        q = q0 if qi == 0 else q1
+        vi = float(n - 1) * q
+        if vi >= n - 1:
+            pi = -1
+            k = n - 1
+            kn = n - 1
+        elif vi < 0:
+            pi = 0
+            k = 0
+            kn = 0
+        else:
+            pi = int(np.floor(vi))
+            k = pi
+            kn = pi + 1
+        g = vi - float(pi)
+        _c251_kth(buf, lo if k >= lo else 0, n, k)
+        a = buf[k]
+        if kn == k:
+            b = a
+        else:
+            b = buf[k + 1]
+            for t in range(k + 2, n):
+                if buf[t] < b:
+                    b = buf[t]
+        d = b - a
+        if g >= 0.5:
+            out[qi] = b - d * (1.0 - g)
+        else:
+            out[qi] = a + d * g
+        lo = k + 1 if k + 1 < n else k
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_menu_stats(ctx, fit_points, validation_points, span, hold, away, limit):
+    rows = ctx.shape[0]
+    W = ctx.shape[1]
+    buf = np.empty(W, dtype=np.float64)
+    qq = np.empty(2, dtype=np.float64)
+    b16 = np.empty(16, dtype=np.float64)
+    d = np.empty(validation_points, dtype=np.float64)
+    for r in range(rows):
+        row = ctx[r]
+        mx = 0.0
+        for t in range(W):
+            v = row[t]
+            buf[t] = v
+            av = abs(v)
+            if av > mx:
+                mx = av
+        _c251_qlin2(buf, W, 0.1, 0.9, qq)
+        s = qq[1] - qq[0]
+        f = mx * 1e-12
+        if not (s >= f or s != s):      # np.maximum: NaN-propagating, ties keep the first operand
+            s = f
+        if not (s >= 1e-12 or s != s):
+            s = 1e-12
+        span[r] = s
+        for k in range(16):
+            x = row[fit_points - 16 + k]
+            j = k
+            while j > 0 and b16[j - 1] > x:
+                b16[j] = b16[j - 1]
+                j -= 1
+            b16[j] = x
+        anchor = (0.0 + ((0.0 + b16[7]) + b16[8])) / 2.0
+        for t in range(validation_points):
+            d[t] = abs(row[fit_points + t] - anchor)
+        h = ((0.0 + _v2_pw(d, 0, validation_points)) / validation_points) / s
+        hold[r] = h
+        thr = 0.05 * s
+        c = 0
+        for t in range(fit_points):
+            if abs(row[t] - anchor) > thr:
+                c += 1
+        a_ = c / fit_points
+        away[r] = a_
+        if a_ >= 0.15:
+            m75 = 0.75 * h
+            limit[r] = 0.12 if 0.12 <= m75 else m75
+        else:
+            limit[r] = -1.0
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_menu_pick(errors, hold, away, pos, first):
+    rows = errors.shape[0]
+    J = errors.shape[1]
+    for r in range(rows):
+        best = np.inf
+        p = 0
+        anyv = False
+        for j in range(J):
+            e = errors[r, j]
+            if e < np.inf:
+                anyv = True
+                if e < best:
+                    best = e
+                    p = j
+        pos[r] = p
+        e = errors[r, p]
+        first[r] = anyv and (e <= 0.12) and (e <= 0.75 * hold[r]) and (away[r] >= 0.15)
+
+
+def _c251_validated_cycle_menu(context, fit_points, validation_points, lag_low, lag_stop):
+    context = np.asarray(context, dtype=np.float64)
+    if context.ndim != 2 or context.shape[1] != fit_points + 2 * validation_points or not np.isfinite(context).all():
+        raise ValueError('Need finite contexts with the declared fit and validation lengths')
+    if validation_points not in (256, 512):
+        raise ValueError("unsupported validation length")
+    ctx = np.ascontiguousarray(context)
+    n = ctx.shape[0]
+    span = np.empty(n, dtype=np.float64)
+    hold = np.empty(n, dtype=np.float64)
+    away = np.empty(n, dtype=np.float64)
+    limit = np.empty(n, dtype=np.float64)
+    _c251_menu_stats(ctx, int(fit_points), int(validation_points), span, hold, away, limit)
+    history = np.ascontiguousarray(ctx[:, :fit_points])
+    observed = np.ascontiguousarray(ctx[:, fit_points:fit_points + validation_points])
+    errors = np.empty((n, lag_stop - lag_low), dtype=np.float64)
+    lags_all = np.arange(lag_low, lag_stop, dtype=np.int64)
+    for positions, indices, count in _cycle_menu_groups(fit_points, validation_points, lag_low, lag_stop):
+        _cycle_menu_errors(history, observed, span, limit, lags_all[positions],
+                           np.ascontiguousarray(positions, dtype=np.int64), count, fit_points, errors)
+    pos = np.empty(n, dtype=np.int64)
+    first = np.empty(n, dtype=np.bool_)
+    _c251_menu_pick(errors, hold, away, pos, first)
+    picked = lag_low + pos
+    ok = np.zeros(n, dtype=bool)
+    fp = np.flatnonzero(first)
+    if fp.size:
+        boundary = fit_points + validation_points
+        pf = picked[fp]
+        for lag in np.unique(pf):
+            rows = fp[pf == lag]
+            _, passed = _long_cycle_validation(context[rows, :boundary], context[rows, boundary:], int(lag), span[rows])
+            ok[rows] = passed
+    return ok, picked
+
+
+_validated_cycle_menu = _c251_validated_cycle_menu
+
+
+# ═══════════════ c251-P3: exact _apply_tail_rebase statistics (chunk post-processing of every base family but 7). ═══════════════
+# The menus aside, uid76 spends its time here in ~40 small numpy calls on the (n, 512) pre-boundary window (quantiles,
+# medians, means, tiles). P3 computes the same per-row statistics in one numba pass and keeps everything else verbatim:
+#  * RNG: selected = rng.random(n), back = rng.integers(..), then (after the menus) hold = rng.random(n) and
+#    retain = rng.uniform(..) -- the same calls in the same order. cycle_rng = Generator(rng.bit_generator.jumped())
+#    is only built when _CYCLE_PREDICTIVE_MODE uses it: 'median' / 'native' never draw from it, and jumped() leaves
+#    rng untouched, so skipping it changes nothing.
+#  * pre = take_along_axis(block, boundary - 512 .. boundary - 1) (negative indices wrap like numpy fancy indexing).
+#    If pre holds a NaN or an infinity (selection on NaN would not reproduce numpy's NaN-aware quantile/median), the
+#    RNG state is rewound to the call's entry state and uid76's own function runs instead.
+#  * statistics, per row, with numpy's exact formulas (all ops are IEEE +,-,*,/ / compares / selections; no
+#    transcendental): quantiles 'linear' (vi = (n - 1) * q, floor, gamma, _lerp) on exact order statistics; medians
+#    (0.0 + ((0.0 + a) + b)) / 2.0 (identity-start add.reduce of the two middle values, then / 2) -- never -0.0, so
+#    the anchor bits written into held tails are numpy's; means (0.0 + pairwise) / count with uid76's _v2_pw (equal to
+#    np.add.reduce along a row; verified); boolean means = exact count / size; np.maximum / np.minimum NaN-propagating
+#    first-operand-on-tie semantics; linear_pred = fit_anchor + slope * k (multiply rounded first, no FMA); periodic
+#    candidates in the same lag order with the same strict '<' update. q10/q90 only reach the output through
+#    span = max(q90 - q10, peak * 1e-12, 1e-12) > 0, so the sign of a selected zero cannot matter.
+_c251_tail_rebase_parent = _apply_tail_rebase
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_tr_gather(block, boundary, pre):
+    n = block.shape[0]
+    L = block.shape[1]
+    for r in range(n):
+        b0 = boundary[r] - 512
+        for j in range(512):
+            idx = b0 + j
+            if idx < 0:
+                idx += L
+            pre[r, j] = block[r, idx]
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_qlin1(buf, n, q):
+    vi = float(n - 1) * q
+    if vi >= n - 1:
+        pi = -1
+        k = n - 1
+        kn = n - 1
+    elif vi < 0:
+        pi = 0
+        k = 0
+        kn = 0
+    else:
+        pi = int(np.floor(vi))
+        k = pi
+        kn = pi + 1
+    g = vi - float(pi)
+    _c251_kth(buf, 0, n, k)
+    a = buf[k]
+    if kn == k:
+        b = a
+    else:
+        b = buf[k + 1]
+        for t in range(k + 2, n):
+            if buf[t] < b:
+                b = buf[t]
+    d = b - a
+    if g >= 0.5:
+        return b - d * (1.0 - g)
+    return a + d * g
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_med_even(src, lo, m, buf):
+    for k in range(m):
+        x = src[lo + k]
+        j = k
+        while j > 0 and buf[j - 1] > x:
+            buf[j] = buf[j - 1]
+            j -= 1
+        buf[j] = x
+    h = m // 2
+    return (0.0 + ((0.0 + buf[h - 1]) + buf[h])) / 2.0
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_npmax(a, b):
+    # np.maximum(a, b) for float64: NaN-propagating, the first operand on ties
+    if a != a:
+        return a
+    if b != b:
+        return b
+    return a if a >= b else b
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_tr_stats(pre, span, anchors, repeat_fraction, local_move, drift, strict_linear, recurring_nonflat, best_lag):
+    n = pre.shape[0]
+    buf = np.empty(192, dtype=np.float64)
+    sb = np.empty(32, dtype=np.float64)
+    dl = np.empty(191, dtype=np.float64)
+    d96 = np.empty(96, dtype=np.float64)
+    qq = np.empty(2, dtype=np.float64)
+    lags = (7, 12, 24, 48, 96)
+    for r in range(n):
+        p = pre[r]
+        # recent = p[320:512]
+        peak = abs(p[320])
+        for t in range(192):
+            v = p[320 + t]
+            buf[t] = v
+            av = abs(v)
+            peak = _c251_npmax(peak, av)
+        _c251_qlin2(buf, 192, 0.10, 0.90, qq)
+        sp = _c251_npmax(_c251_npmax(qq[1] - qq[0], peak * 1e-12), 1e-12)
+        span[r] = sp
+        tol = _c251_npmax(peak * 1e-12, 1e-12)
+        c = 0
+        for t in range(191):
+            dv = abs(p[321 + t] - p[320 + t])
+            dl[t] = dv
+            if dv <= tol:
+                c += 1
+        repeat_fraction[r] = c / 191
+        local_move[r] = _c251_qlin1(dl, 191, 0.90) / sp
+        m_last = _c251_med_even(p, 480, 32, sb)
+        m_first = _c251_med_even(p, 320, 32, sb)
+        drift[r] = abs(m_last - m_first) / sp
+        anchors[r] = _c251_med_even(p, 496, 16, sb)
+        # periodic_continue: fit = p[0:416], val = p[416:512]
+        fa = _c251_med_even(p, 400, 16, sb)
+        for t in range(96):
+            d96[t] = abs(p[416 + t] - fa)
+        he = ((0.0 + _v2_pw(d96, 0, 96)) / 96) / sp
+        slope = (_c251_med_even(p, 384, 32, sb) - _c251_med_even(p, 352, 32, sb)) / 32.0
+        for t in range(96):
+            d96[t] = abs(p[416 + t] - (fa + slope * float(t + 1)))
+        le = ((0.0 + _v2_pw(d96, 0, 96)) / 96) / sp
+        pm = abs(slope) * 96.0 / sp
+        strict_linear[r] = (le <= 0.08) and (le <= 0.30 * he) and (pm >= 0.20) and (pm <= 0.90)
+        thr = 0.05 * sp
+        c = 0
+        for t in range(416):
+            if abs(p[t] - fa) > thr:
+                c += 1
+        af = c / 416
+        pe = np.inf
+        bl = 7
+        for li in range(5):
+            lag = lags[li]
+            base = 416 - lag
+            for t in range(96):
+                d96[t] = abs(p[416 + t] - p[base + (t % lag)])
+            err = ((0.0 + _v2_pw(d96, 0, 96)) / 96) / sp
+            if err < pe:
+                pe = err
+                bl = lag
+        best_lag[r] = bl
+        recurring_nonflat[r] = (af >= 0.15) and (pe <= 0.12) and (pe <= 0.75 * he)
+
+
+def _c251_apply_tail_rebase(
+    rng: np.random.Generator,
+    block: np.ndarray,
+    rate: float,
+    *,
+    periodic_continue: bool = False,
+    preserve_periodic_native: bool = False,
+    _route_mode: str = "all",
+) -> np.ndarray:
+    if rate <= 0.0:
+        return block
+    n, L = block.shape
+    if n == 0 or L < 608:
+        return block
+    if not periodic_continue or type(block) is not np.ndarray or block.dtype != np.float64:
+        return _c251_tail_rebase_parent(rng, block, rate, periodic_continue=periodic_continue,
+                                        preserve_periodic_native=preserve_periodic_native, _route_mode=_route_mode)
+    st0 = rng.bit_generator.state
+    selected = rng.random(n) < rate
+    back = rng.integers(256, min(721, L - 32), size=n)
+    boundary = L - back
+    pre = np.empty((n, 512), dtype=np.float64)
+    _c251_tr_gather(block, np.ascontiguousarray(boundary, dtype=np.int64), pre)
+    if not bool(np.isfinite(pre).all()):
+        rng.bit_generator.state = st0
+        return _c251_tail_rebase_parent(rng, block, rate, periodic_continue=periodic_continue,
+                                        preserve_periodic_native=preserve_periodic_native, _route_mode=_route_mode)
+    span = np.empty(n, dtype=np.float64)
+    anchors = np.empty(n, dtype=np.float64)
+    repeat_fraction = np.empty(n, dtype=np.float64)
+    local_move = np.empty(n, dtype=np.float64)
+    drift = np.empty(n, dtype=np.float64)
+    strict_linear = np.empty(n, dtype=np.bool_)
+    recurring_nonflat = np.empty(n, dtype=np.bool_)
+    best_lag = np.empty(n, dtype=np.int64)
+    _c251_tr_stats(pre, span, anchors, repeat_fraction, local_move, drift, strict_linear, recurring_nonflat, best_lag)
+    long_recurring = np.zeros(n, dtype=bool)
+    long_histories = {}
+    if _LONG_CYCLE_ENABLED and periodic_continue:
+        pending = np.flatnonzero(selected & (~recurring_nonflat) & (~strict_linear)
+                                 & (boundary >= 1024))
+        if pending.size:
+            long_offsets = np.arange(-1024, 0, dtype=np.int64)[None, :]
+            long_pre = block[pending[:, None], boundary[pending, None] + long_offsets]
+            long_ok, long_lag = _validated_long_cycle(long_pre)
+            accepted = pending[long_ok]
+            long_recurring[accepted] = True
+            best_lag[accepted] = long_lag[long_ok]
+            for pos in np.flatnonzero(long_ok):
+                long_histories[int(pending[pos])] = long_pre[pos]
+    if _LONGER_CYCLE_ENABLED and periodic_continue:
+        pending = np.flatnonzero(selected & (~recurring_nonflat) & (~strict_linear)
+                                 & (~long_recurring) & (boundary >= 2048))
+        if pending.size:
+            longer_offsets = np.arange(-2048, 0, dtype=np.int64)[None, :]
+            longer_pre = block[pending[:, None], boundary[pending, None] + longer_offsets]
+            longer_ok, longer_lag = _validated_longer_cycle(longer_pre)
+            accepted = pending[longer_ok]
+            long_recurring[accepted] = True
+            best_lag[accepted] = longer_lag[longer_ok]
+            for pos in np.flatnonzero(longer_ok):
+                long_histories[int(pending[pos])] = longer_pre[pos]
+    eligible = selected & (~recurring_nonflat) & (~strict_linear) & (~long_recurring) & (
+        (repeat_fraction >= 0.35)
+        | ((local_move <= 0.03) & (drift <= 0.12))
+    )
+    hold = rng.random(n) < 0.95
+    retain = rng.uniform(0.05, 0.25, size=n)
+    periodic_rows = selected & (recurring_nonflat | long_recurring)
+    linear_rows = selected & strict_linear & (~recurring_nonflat)
+
+    native_linear_rows = linear_rows & ((np.arange(n, dtype=np.int64) & 1) == 0)
+    if _route_mode not in ("all", "periodic", "quiet"):
+        raise ValueError("invalid continuation route mode")
+    if _route_mode == "periodic":
+        eligible = np.zeros(n, dtype=bool)
+        linear_rows = np.zeros(n, dtype=bool)
+        native_linear_rows = np.zeros(n, dtype=bool)
+    elif _route_mode == "quiet":
+        periodic_rows = np.zeros(n, dtype=bool)
+        linear_rows = np.zeros(n, dtype=bool)
+        native_linear_rows = np.zeros(n, dtype=bool)
+
+    cycle_rng = (None if _CYCLE_PREDICTIVE_MODE in ("median", "native")
+                 else np.random.Generator(rng.bit_generator.jumped()))
+    for row in np.nonzero(eligible | periodic_rows | linear_rows)[0]:
+        b = int(boundary[row])
+        if periodic_rows[row]:
+            if preserve_periodic_native:
+                continue
+            lag = int(best_lag[row])
+            block[row, b:] = _empirical_cycle_tail(
+                long_histories.get(row, pre[row]), lag, L - b, cycle_rng, _CYCLE_PREDICTIVE_MODE)
+            continue
+        if linear_rows[row]:
+            if native_linear_rows[row]:
+                continue
+            slope_now = (
+                np.median(pre[row, -32:])
+                - np.median(pre[row, -64:-32])
+            ) / 32.0
+            line = anchors[row] + slope_now * np.arange(1, L - b + 1)
+            block[row, b:] = np.clip(
+                line, anchors[row] - span[row], anchors[row] + span[row]
+            )
+            continue
+        anchor = float(anchors[row])
+        if hold[row]:
+            tail = np.full(L - b, anchor)
+        else:
+            tail = anchor + float(retain[row]) * (block[row, b:] - anchor)
+        block[row, b:] = tail
+    return block
+
+
+_apply_tail_rebase = _c251_apply_tail_rebase
+
+
+# ═══════════════ c251-P4: exact fast seeding (numpy SeedSequence -> PCG64), used by P4/P8. ═══════════════
+# uid76 already carries two SeedSequence replicas: the vectorised _ss_columns/_pcg64_seed_words (self-tested against
+# numpy at import by _assert_seeding_replica, and the source of every row stream) and the _FastCoin pool +
+# _fcx_nb_state/_fcx_nb_step/_fcx_nb_out PCG64 kernels (the _fcx_coin path). P4 reuses them unchanged and adds its
+# own import-time self-test against numpy (on any divergence the fast paths switch themselves off and the original
+# numpy constructions run). A replica yields the SAME PCG64 state (seed/inc words of SeedSequence.generate_state(4,
+# uint64), pcg64_set_seed, has_uint32 = uinteger = 0), so every later draw is bit-identical; no RNG call is added,
+# removed or reordered anywhere.
+from numpy.random.bit_generator import ISpawnableSeedSequence as _C251ISS
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_first_doubles(words, out):
+    # words[k] = generate_state(4, uint64) of a SeedSequence; out[k] = Generator(PCG64(seed_seq)).random()
+    one = np.uint64(1)
+    s63 = np.uint64(63)
+    for k in range(words.shape[0]):
+        ih = (words[k, 2] << one) | (words[k, 3] >> s63)
+        il = (words[k, 3] << one) | one
+        lo = il + words[k, 1]
+        hi = ih + words[k, 0] + (one if lo < il else np.uint64(0))
+        hi, lo = _fcx_nb_step(hi, lo, ih, il)
+        hi, lo = _fcx_nb_step(hi, lo, ih, il)
+        out[k] = _fcx_nb_out(hi, lo)
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_ss_words(pool, hc, extra, out):
+    # numpy SeedSequence: mix the extra entropy words (here: the spawn key) into a cached 4-word pool, continuing the
+    # hash-constant sequence (hashmix / mix of _bit_generator.pyx), then generate_state(4, uint64).
+    m32 = np.uint64(0xFFFFFFFF)
+    s16 = np.uint64(16)
+    s32 = np.uint64(32)
+    ma = np.uint64(0x931E8875)
+    mb = np.uint64(0x58F38DED)
+    ml = np.uint64(0xCA01F9DD)
+    mr = np.uint64(0x4973F715)
+    p = np.empty(4, dtype=np.uint64)
+    for d in range(4):
+        p[d] = pool[d]
+    h = hc
+    for s in range(extra.shape[0]):
+        for d in range(4):
+            v = extra[s] ^ h
+            h = (h * ma) & m32
+            v = (v * h) & m32
+            v = v ^ (v >> s16)
+            r = (ml * p[d] - mr * v) & m32
+            p[d] = r ^ (r >> s16)
+    hb = np.uint64(0x8B51F9DD)
+    for j in range(4):
+        v0 = p[(2 * j) & 3] ^ hb
+        hb = (hb * mb) & m32
+        v0 = (v0 * hb) & m32
+        v0 = v0 ^ (v0 >> s16)
+        v1 = p[(2 * j + 1) & 3] ^ hb
+        hb = (hb * mb) & m32
+        v1 = (v1 * hb) & m32
+        v1 = v1 ^ (v1 >> s16)
+        out[j] = (v1 << s32) | v0
+
+
+class _C251SeedSeq(_C251ISS):
+    """Stand-in seed sequence for np.random.SeedSequence(entropy, spawn_key=spawn_key): PCG64.__init__ takes the
+    precomputed generate_state(4, uint64) words once; everything else (spawn, entropy, spawn_key, pool, state, ...)
+    is answered by a lazily built REAL SeedSequence with the same arguments, so Generator.spawn() and seed_seq
+    introspection by layers stacked on top see exactly what they would with uid76."""
+    __slots__ = ("_c251_e", "_c251_k", "_c251_w", "_c251_r")
+
+    def __init__(self, entropy, spawn_key, words):
+        self._c251_e = entropy
+        self._c251_k = spawn_key
+        self._c251_w = words
+        self._c251_r = None
+
+    def _c251_real(self):
+        r = self._c251_r
+        if r is None:
+            r = self._c251_r = np.random.SeedSequence(self._c251_e, spawn_key=self._c251_k)
+        return r
+
+    def generate_state(self, n_words, dtype=np.uint32):
+        w = self._c251_w
+        if w is not None and n_words == 4 and dtype is np.uint64:
+            self._c251_w = None
+            return w
+        return self._c251_real().generate_state(n_words, dtype)
+
+    def spawn(self, n_children):
+        return self._c251_real().spawn(n_children)
+
+    @property
+    def entropy(self):
+        return self._c251_e
+
+    @property
+    def spawn_key(self):
+        return self._c251_real().spawn_key
+
+    @property
+    def pool_size(self):
+        return self._c251_real().pool_size
+
+    @property
+    def n_children_spawned(self):
+        return self._c251_real().n_children_spawned
+
+    @property
+    def pool(self):
+        return self._c251_real().pool
+
+    @property
+    def state(self):
+        return self._c251_real().state
+
+    def __repr__(self):
+        return repr(self._c251_real())
+
+
+_C251_SS_POOLS = {}
+_C251_SS_ON = [True]
+_C251_M32 = 0xFFFFFFFF
+
+
+def _c251_rng(entropy, spawn_key):
+    """== np.random.default_rng(np.random.SeedSequence(entropy, spawn_key=spawn_key)) for a list/tuple of
+    non-negative Python ints as entropy and a non-empty tuple of non-negative Python ints as spawn key."""
+    if _C251_SS_ON[0]:
+        key = (entropy,) if type(entropy) is int else tuple(entropy)
+        e = _C251_SS_POOLS.get(key)
+        if e is None:
+            ok = len(key) > 0 and all(type(v) is int and v >= 0 for v in key)
+            if ok:
+                c = _FastCoin(list(key))
+                e = (np.array(c._pool, dtype=np.uint64), np.uint64(c._hc))
+                if len(_C251_SS_POOLS) > 4096:
+                    _C251_SS_POOLS.clear()
+                _C251_SS_POOLS[key] = e
+        if e is not None and spawn_key:
+            xs = []
+            for v in spawn_key:
+                if type(v) is not int or v < 0:
+                    xs = None
+                    break
+                if v == 0:
+                    xs.append(0)
+                while v > 0:
+                    xs.append(v & _C251_M32)
+                    v >>= 32
+            if xs is not None:
+                w = np.empty(4, dtype=np.uint64)
+                _c251_ss_words(e[0], e[1], np.array(xs, dtype=np.uint64), w)
+                return np.random.Generator(np.random.PCG64(_C251SeedSeq(entropy, tuple(spawn_key), w)))
+    return np.random.default_rng(np.random.SeedSequence(entropy, spawn_key=spawn_key))
+
+
+def _c251_selftest_rng():
+    big = 5125841920496347586
+    keys = [([0, 0], (0,)), ([1, 2], (3,)), ([big, 0x59C0_0001], (12345,)), ([2 ** 64 - 1, 0xC124B002], (2 ** 32 - 1,)),
+            ([2 ** 32, 7, 9], (2 ** 32,)), ([123, 0x59E0_0011], (5, 2)), ([big, 0x59C0_0001, 3], (0,)),
+            ([big], (7,)), ([0], (2 ** 40 + 3, 1)), (1234567, (9,)), (big, (0,)), (2 ** 31 - 1, (77777,))]
+    for ent, sk in keys:
+        a = np.random.default_rng(np.random.SeedSequence(ent, spawn_key=sk))
+        b = _c251_rng(ent, sk)
+        if a.bit_generator.state != b.bit_generator.state or not np.array_equal(a.random(3), b.random(3)):
+            return False
+        if b.bit_generator.seed_seq.entropy != ent or tuple(b.bit_generator.seed_seq.spawn_key) != tuple(sk):
+            return False
+        ca, cb = a.spawn(2), b.spawn(2)
+        if any(x.bit_generator.state != y.bit_generator.state for x, y in zip(ca, cb)):
+            return False
+    rows = [(big, 3, 17, 5, 0xC14401), (0, 0, 0, 0, 0), (2 ** 64 - 1, 9, 1, 2047, 0xC14401)]
+    for r_ in rows:
+        cols = _ss_columns([np.array([v], dtype=np.uint64) for v in r_], 1)
+        if cols is None:
+            return False
+        u = np.empty(1, dtype=np.float64)
+        _c251_first_doubles(_pcg64_seed_words(cols), u)
+        if u[0] != np.random.default_rng(np.random.SeedSequence(r_)).random():
+            return False
+    return True
+
+
+try:
+    _C251_SS_ON[0] = bool(_c251_selftest_rng())
+except Exception:
+    _C251_SS_ON[0] = False
+
+
+# ── P4: renewal-persistence gate (0.72 SeedSequence + default_rng per record, each used for ONE uniform). The gate
+# uniforms of all eligible slots are computed at once with uid76's own row-stream replica (_ss_columns /
+# _pcg64_seed_words: same entropy words (base_seed, chunk_index, fam, slot, STAGE), self-tested) + the first PCG64
+# double; slots are then visited in the same order with the same eligibility tests, and the selected slots build
+# path_rng / noise_rng and the replacement series exactly as before.
+def _c251_apply_renewal_persistence(chunk, fam_ids, base_seed, chunk_index, settings):
+    selected = np.zeros(len(chunk), dtype=bool)
+    rate = settings["rate"]
+    if rate <= 0.0:
+        return selected
+    eligible = settings["eligible_families"]
+    slots = []
+    fams = []
+    for slot, old in enumerate(chunk):
+        fam = int(fam_ids[slot])
+        if old is None or old.size == 0 or _FAMILIES[fam] not in eligible:
+            continue
+        slots.append(slot)
+        fams.append(fam)
+    if not slots:
+        return selected
+    gate = None
+    if _C251_SS_ON[0] and int(base_seed) >= 0 and int(chunk_index) >= 0:
+        cols = _ss_columns([int(base_seed), int(chunk_index), np.array(fams, dtype=np.uint64),
+                            np.array(slots, dtype=np.uint64), _RENEWAL_SELECT_STAGE], len(slots))
+        if cols is not None:
+            gate = np.empty(len(slots), dtype=np.float64)
+            _c251_first_doubles(_pcg64_seed_words(cols), gate)
+    for j in range(len(slots)):
+        slot = slots[j]
+        fam = fams[j]
+        old = chunk[slot]
+        coords = (int(base_seed), int(chunk_index), fam, slot)
+        if gate is not None:
+            u = gate[j]
+        else:
+            u = np.random.default_rng(np.random.SeedSequence((*coords, _RENEWAL_SELECT_STAGE))).random()
+        if u >= rate:
+            continue
+        path_rng = np.random.default_rng(np.random.SeedSequence((*coords, _RENEWAL_PATH_STAGE)))
+        noise_rng = np.random.default_rng(np.random.SeedSequence((*coords, _RENEWAL_NOISE_STAGE)))
+        chunk[slot] = _renewal_persistence_series(path_rng, noise_rng, int(old.size), settings)
+        selected[slot] = True
+    return selected
+
+
+_apply_renewal_persistence = _c251_apply_renewal_persistence
+
+
+# ═══════════════ c251-P5: exact numba _yqh_station (YQH station-hold scan, ~1.5 calls/record once C91/YQH open). ═══════════════
+# Same tests in the same order on the same values: all finite; d = s[t+1] - s[t] (np.diff); mv = d != 0.0;
+# >= 4 moves; real = s[mv[0]:] with size >= 256, min >= 0, max <= cap; mean(real == rint(real)) >= 0.98 (a mean of
+# booleans is the exact count / size; rint = round-half-even, an exact IEEE operation); np.median(|d[mv]|) <= 1.0
+# with numpy's median value: middle order statistic (odd n) or (0.0 + ((0.0 + a) + b)) / 2.0 (even n; identity-start
+# add.reduce then true_divide). The |d| are > 0, so the selected order statistics are sign-free and unique in value.
+# No RNG. Non-float inputs keep uid76's path.
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_yqh_station_nb(s, cap):
+    n = s.shape[0]
+    for t in range(n):
+        if not np.isfinite(s[t]):
+            return False
+    if n < 2:
+        return False
+    cnt = 0
+    first = -1
+    for t in range(n - 1):
+        if s[t + 1] - s[t] != 0.0:
+            if first < 0:
+                first = t
+            cnt += 1
+    if cnt < 4:
+        return False
+    m = n - first
+    if m < 256:
+        return False
+    lo = s[first]
+    hi = s[first]
+    k = 0
+    for t in range(first, n):
+        v = s[t]
+        if v < lo:
+            lo = v
+        if v > hi:
+            hi = v
+        if v == np.rint(v):
+            k += 1
+    if lo < 0.0 or hi > cap:
+        return False
+    if k / m < 0.98:
+        return False
+    a = np.empty(cnt, dtype=np.float64)
+    j = 0
+    for t in range(n - 1):
+        dd = s[t + 1] - s[t]
+        if dd != 0.0:
+            a[j] = abs(dd)
+            j += 1
+    h = cnt // 2
+    _c251_kth(a, 0, cnt, h)
+    if cnt % 2 == 1:
+        med = 0.0 + a[h]
+    else:
+        lo2 = a[0]
+        for t in range(1, h):
+            if a[t] > lo2:
+                lo2 = a[t]
+        med = (0.0 + ((0.0 + lo2) + a[h])) / 2.0
+    return med <= 1.0
+
+
+_c251_yqh_station_parent = _yqh_station
+
+
+def _c251_yqh_station(s, cap):
+    if (type(s) is np.ndarray and s.dtype == np.float64 and s.ndim == 1 and type(cap) is float):
+        return bool(_c251_yqh_station_nb(s, cap))
+    return _c251_yqh_station_parent(s, cap)
+
+
+_yqh_station = _c251_yqh_station
+
+
+# ═══════════════ c251-P7: exact _c124b2_extend (C91 univariate hold extension, open regime ~0.54 calls/record). ═══════════════
+# uid76 builds the candidate runs with a Python list comprehension over EVERY change point, a full-length cumsum for
+# ceq and np.full pieces + concatenate for the output. P7 does the three integer/copy jobs in numba:
+#  * runs: maximal constant stretches [s, e) (a new run starts at t when v[t] != v[t-1], NaN != NaN as in numpy),
+#    kept when s > 0 and e - s >= _C91_MIN_RUN, in the same order, as Python ints;
+#  * ceq[t] = #{1 <= t' <= t : v[t'] == v[t'-1]} (= concatenate([0], cumsum(v[1:] == v[:-1])), same int64 values);
+#  * output: the same concatenation (v[prev:e], d copies of v[e-1], ..., v[prev:]) written into one (L + ins) array
+#    whose [ins:] view is returned, exactly like np.concatenate(pieces)[ins:] (copies only; bits preserved).
+# Everything that touches r (r.permutation(len(cand)), then per candidate r.random() and, when it passes,
+# r.geometric(1 / _C91_MEAN_D)) and every test in the selection loop is uid76's code verbatim.
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_c91_runs(v, min_run, cs, ce, ceq):
+    L = v.shape[0]
+    ceq[0] = 0
+    c = 0
+    start = 0
+    nc = 0
+    for t in range(1, L):
+        if v[t] == v[t - 1]:
+            c += 1
+        else:
+            if start > 0 and t - start >= min_run:
+                cs[nc] = start
+                ce[nc] = t
+                nc += 1
+            start = t
+        ceq[t] = c
+    if start > 0 and L - start >= min_run:
+        cs[nc] = start
+        ce[nc] = L
+        nc += 1
+    return nc
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_c91_assemble(v, es, ds, out):
+    pos = 0
+    prev = 0
+    for k in range(es.shape[0]):
+        e = es[k]
+        for t in range(prev, e):
+            out[pos] = v[t]
+            pos += 1
+        val = v[e - 1]
+        for t in range(ds[k]):
+            out[pos] = val
+            pos += 1
+        prev = e
+    for t in range(prev, v.shape[0]):
+        out[pos] = v[t]
+        pos += 1
+
+
+_c251_c124b2_parent = _c124b2_extend
+
+
+def _c251_c124b2_extend(x, r):
+    v = np.asarray(x)
+    if v.ndim != 1 or v.size < 256 or v.dtype.kind != 'f':
+        return None
+    if v.dtype != np.float64:
+        return _c251_c124b2_parent(x, r)
+    L = int(v.size)
+    cs = np.empty(L, dtype=np.int64)
+    ce = np.empty(L, dtype=np.int64)
+    ceq = np.empty(L, dtype=np.int64)
+    nc = int(_c251_c91_runs(v, float(_C91_MIN_RUN), cs, ce, ceq))
+    if nc == 0:
+        return None
+    cand = list(zip(cs[:nc].tolist(), ce[:nc].tolist()))
+    chosen = {}
+    ins = 0
+    for j in r.permutation(len(cand)).tolist():
+        if r.random() >= _C91_P:
+            continue
+        d = int(min(_C91_MIN_D + int(r.geometric(1.0 / _C91_MEAN_D)), _C91_MAX_D))
+        s = cand[j][0]
+        a = max(1, s - _C124B2_W)
+        nd = s - a
+        if nd < _C124B2_MIN_N or int(ceq[s - 1] - ceq[a - 1]) < _C124B2_QMIN * nd:
+            continue
+        if ins + d > _C91_MAX_TOTAL:
+            continue
+        chosen[j] = d
+        ins += d
+    if ins == 0:
+        return None
+    es = []
+    ds = []
+    for j, (s, e) in enumerate(cand):
+        d = chosen.get(j)
+        if d is None:
+            continue
+        es.append(e)
+        ds.append(d)
+    out = np.empty(L + ins, dtype=v.dtype)
+    _c251_c91_assemble(v, np.array(es, dtype=np.int64), np.array(ds, dtype=np.int64), out)
+    w = out[ins:]
+    return w if w.size == L else None
+
+
+if _c91_extend is _c124b2_extend:
+    _c91_extend = _c251_c124b2_extend
+
+
+# ═══════════════ c251-P6: exact _acuh_air (ACUH 4th-channel 'air' family): the pollution-episode loop. ═══════════════
+# uid76 builds every episode with linspace + arange + divide + exp + concatenate + a slice add (~10 us of numpy
+# overhead per episode, ~23 episodes per call). P6 keeps the per-episode RNG calls verbatim and in order
+# (r.integers(0, n, nep) for the starts, then per episode r.normal -> r.integers(1, 4) -> r.uniform(1.0, 4.0)), keeps
+# the per-episode SCALAR np.exp(r.normal(...)) as a scalar ufunc call, and then:
+#  * linspace(0, 1, rise + 1)[1:] for rise in {1, 2, 3} comes from a table built once with the same np.linspace call;
+#  * the decay exponentials of all episodes are ONE np.exp over the concatenated float64(-k) / decay arguments
+#    (k = 1..int(6 * decay) + 1, the same int64 -> float64 conversion and true division as -np.arange(..) / decay):
+#    a 1-D contiguous ufunc call exactly like each original per-episode call, so every element goes through the same
+#    inner loop and gets the same bits;
+#  * ep[s:e] += a * seg[:e - s] is replayed episode by episode in a numba loop: per element ep[t] + (a * seg[t - s])
+#    with the multiply rounded first (fastmath OFF, no FMA contraction), in the same episode order.
+# Everything else in the function is uid76's code verbatim. _ACUH_FAMS is rebuilt with the new function object
+# (same names, weights and order) because the table holds the original function.
+_C251_ACUH_LIN = np.zeros((4, 3), dtype=np.float64)
+for _c251_rise in (1, 2, 3):
+    _C251_ACUH_LIN[_c251_rise, :_c251_rise] = np.linspace(0, 1, _c251_rise + 1)[1:]
+del _c251_rise
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_negk_over(em, ed):
+    tot = 0
+    for j in range(em.shape[0]):
+        tot += em[j]
+    out = np.empty(tot, dtype=np.float64)
+    o = 0
+    for j in range(em.shape[0]):
+        d = ed[j]
+        for k in range(1, em[j] + 1):
+            out[o] = float(-k) / d
+            o += 1
+    return out
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_acuh_accum(ep, starts, ea, er, em, ex, lin):
+    n = ep.shape[0]
+    off = 0
+    for j in range(starts.shape[0]):
+        s = starts[j]
+        rise = er[j]
+        m = em[j]
+        a = ea[j]
+        e = s + rise + m
+        if e > n:
+            e = n
+        for t in range(e - s):
+            if t < rise:
+                v = lin[rise, t]
+            else:
+                v = ex[off + t - rise]
+            ep[s + t] = ep[s + t] + a * v
+        off += m
+
+
+def _c251_acuh_air(r, L):
+    k = _ACUH_AIR_NAMES[int(np.searchsorted(_ACUH_AIR_CUM, r.random() * 0.999999, side="right"))]
+    _, lev, shape, amp, phi, rate, ep_mu, zfloor, p_int, quantum = _ACUH_AIR_P[k]
+    u = r.random()
+    n = int(r.integers(650, 1001)) if u < 0.92 else int(r.integers(1000, min(L, 4160) + 1))
+    t = np.arange(n, dtype=np.float64)
+    hours = t + r.uniform(0, 24)
+    base = np.log(np.exp(r.uniform(np.log(lev[0]), np.log(lev[1]))))
+    prof = _acuh_air_profile(r, shape, hours) * r.uniform(*amp) * 1.25
+    wk = r.uniform(0.0, 0.15) * (((hours // 24) % 7) < 5) if shape == "traffic" else 0.0
+    syn = _acuh_smooth_noise(r, n, 1.0 / r.uniform(48, 240)) * r.uniform(0.15, 0.45)
+    drift = np.linspace(0.0, r.normal(0.0, 0.6), n)
+    ph = r.uniform(*phi)
+    noise = _acuh_ar1(r, n, ph, r.uniform(0.10, 0.25) * np.sqrt(1 - ph * ph) * 1.5)
+    lx = base + prof + wk + syn + drift + noise
+
+    ep = np.zeros(n)
+    nep = r.poisson(n * r.uniform(*rate) / 1000.0)
+    starts = r.integers(0, n, nep)
+    ne = int(starts.shape[0])
+    if ne:
+        ea = np.empty(ne, dtype=np.float64)
+        er = np.empty(ne, dtype=np.int64)
+        em = np.empty(ne, dtype=np.int64)
+        ed = np.empty(ne, dtype=np.float64)
+        for j in range(ne):
+            ea[j] = np.exp(r.normal(ep_mu - 0.6, 0.55))
+            rise, decay = int(r.integers(1, 4)), r.uniform(1.0, 4.0)
+            er[j] = rise
+            em[j] = int(6 * decay) + 1
+            ed[j] = decay
+        ex = np.exp(_c251_negk_over(em, ed))
+        _c251_acuh_accum(ep, np.ascontiguousarray(starts, dtype=np.int64), ea, er, em, ex, _C251_ACUH_LIN)
+    if r.random() < 0.5 and k in ("pm25", "pm10", "no2", "bc", "other"):
+        for _ in range(int(r.integers(1, 3))):
+            s = int(r.integers(0, n)); d = int(r.integers(24, 96))
+            env = np.sin(np.linspace(0, np.pi, d)) ** 2 * r.uniform(0.4, 1.3)
+            e = min(n, s + d); lx[s:e] += env[:e - s]
+    x = np.exp(lx) * (1.0 + ep)
+    if zfloor > 0:
+        thr = np.quantile(x, r.uniform(0.6, 1.4) * zfloor)
+        x = np.where(x < thr, 0.0, x)
+    signed = k in ("no2", "no", "o3", "other") and zfloor < 0.3 and r.random() < 0.3
+    if signed:
+        x = x + r.normal(0.0, r.uniform(0.3, 2.0)) * 0.3 + r.standard_normal(n) * r.uniform(0.2, 1.2)
+    if r.random() < p_int:
+        x = np.round(x)
+    else:
+        x = _acuh_quantise(x, quantum if r.random() < 0.8 else quantum / 10.0)
+    if not signed:
+        x = np.maximum(x, 0.0)
+    if np.ptp(x) == 0:
+        x = x + _acuh_quantise(np.abs(r.standard_normal(n)) * 0.1, 0.1)
+    return _acuh_pad(x, L)
+
+
+if any(fn is _acuh_air for _, _, fn in _ACUH_FAMS):
+    _ACUH_FAMS = tuple((nm, w, (_c251_acuh_air if fn is _acuh_air else fn)) for nm, w, fn in _ACUH_FAMS)
+    _acuh_air = _c251_acuh_air
+
+
+# ═══════════════ c251-P9: exact numba _k87_quiet_eval (the quiet-tail test behind _k87_quiet; ~0.7 memo misses per record). ═══════════════
+# Same statistic, same decision: sorted values (np.sort -> exact order statistics), uid76's _k87_lin interpolation
+# ((n - 1) * q, floor, g, a + (b - a) * g or b - (b - a) * (1 - g)), Python max() semantics for span/tol (first
+# maximal argument kept), count(d <= tol) / d.size >= 0.35, the 90% lin-quantile of the sorted |diff|, and the
+# (m[15] + m[16]) / 2 mid-values of the first/last 32 points. Non-finite inputs (and any other shape) return -1 and
+# take uid76's own path (_k87_quiet_slow). A selected zero's sign cannot change the decision: span >= 1e-12 > 0 and
+# every other use goes through abs() of a difference.
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_k87_lin(s, q):
+    v = (s.shape[0] - 1) * q
+    j = int(np.floor(v))
+    g = v - float(j)
+    a = s[j]
+    b = s[j + 1]
+    diff = b - a
+    if g >= 0.5:
+        return b - diff * (1 - g)
+    return a + diff * g
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_k87_eval_nb(recent):
+    n = recent.shape[0]
+    for t in range(n):
+        if not np.isfinite(recent[t]):
+            return -1
+    s = np.sort(recent)
+    lo = s[0]
+    hi = s[n - 1]
+    d = np.empty(n - 1, dtype=np.float64)
+    for t in range(n - 1):
+        d[t] = abs(recent[t + 1] - recent[t])
+    q10 = _c251_k87_lin(s, 0.10)
+    q90 = _c251_k87_lin(s, 0.90)
+    alo = abs(lo)
+    ahi = abs(hi)
+    peak = ahi if ahi > alo else alo
+    span = q90 - q10
+    c = peak * 1e-12
+    if c > span:
+        span = c
+    if 1e-12 > span:
+        span = 1e-12
+    tol = peak * 1e-12
+    if 1e-12 > tol:
+        tol = 1e-12
+    cnt = 0
+    for t in range(n - 1):
+        if d[t] <= tol:
+            cnt += 1
+    if cnt / (n - 1) >= 0.35:
+        return 1
+    sd = np.sort(d)
+    if not np.isfinite(sd[n - 2]):
+        return -1
+    m1 = np.sort(recent[n - 32:])
+    m0 = np.sort(recent[:32])
+    drift = abs((m1[15] + m1[16]) / 2 - (m0[15] + m0[16]) / 2) / span
+    if _c251_k87_lin(sd, 0.90) / span <= 0.03 and drift <= 0.12:
+        return 1
+    return 0
+
+
+_c251_k87_eval_parent = _k87_quiet_eval
+
+
+def _c251_k87_quiet_eval(recent):
+    if (type(recent) is np.ndarray and recent.dtype == np.float64 and recent.ndim == 1 and recent.size >= 64):
+        v = int(_c251_k87_eval_nb(recent))
+        if v >= 0:
+            return v == 1
+    return _c251_k87_eval_parent(recent)
+
+
+_k87_quiet_eval = _c251_k87_quiet_eval
+
+
+# ── c251-P9b: _c91_points without the numpy-dispatch wrappers (np.size / np.ndim / np.shape) for ndarray and dict
+# records: the same integer (size, or ceil(100 * size / 120) for a 2-D record with more than one channel).
+_c251_c91_points_parent = _c91_points
+
+
+def _c251_c91_points(x):
+    v = x['values'] if isinstance(x, dict) else x
+    if type(v) is np.ndarray:
+        size = int(v.size)
+        if v.ndim == 2 and int(v.shape[0]) > 1:
+            return -(-size * 100 // 120)
+        return size
+    return _c251_c91_points_parent(x)
+
+
+_c91_points = _c251_c91_points
+
+
+# ═══════════════ c251-P11: exact row std in _apply_nonneg_integer_prior (chunk post-processing). ═══════════════
+# rows.std(axis=1, keepdims=True) of a C-contiguous float64 block = per row sqrt((0.0 + pairwise((x - m) * (x - m)))
+# / L) with m = (0.0 + pairwise(x)) / L, i.e. uid76's own _v2_var_nb + a correctly rounded sqrt (bit-equal to numpy's
+# two-pass std along a contiguous row; verified). Everything else (the RNG calls rng.random(n), rng.uniform(..),
+# rng.random(..) [, rng.random(..)], _spread_flat_levels, the rint / scaling / write-back) is uid76's code verbatim.
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_row_std(rows, out):
+    for r in range(rows.shape[0]):
+        out[r, 0] = np.sqrt(_v2_var_nb(rows[r]))
+
+
+def _c251_rows_std_keep(rows):
+    if (type(rows) is np.ndarray and rows.dtype == np.float64 and rows.ndim == 2 and rows.flags.c_contiguous
+            and rows.shape[1] > 0):
+        out = np.empty((rows.shape[0], 1), dtype=np.float64)
+        _c251_row_std(rows, out)
+        return out
+    return rows.std(axis=1, keepdims=True)
+
+
+
+def _c251_apply_nonneg_integer_prior(
+    rng: np.random.Generator, block: np.ndarray, *,
+    integer_min_std: float = 0.0,
+    integer_min_std_frac: float = 1.0,
+    integer_frac: float = _NONNEG_INTEGER_FRAC,
+    flat_level_spread: float = 0.0,
+) -> np.ndarray:
+    n = block.shape[0]
+    if n == 0:
+        return block
+    nonneg_mask = rng.random(n) < _NONNEG_FRAC
+    if not nonneg_mask.any():
+        return block
+    sel = np.nonzero(nonneg_mask)[0]
+
+    whole = sel.size == n
+    rows = block if whole else block[sel]
+    row_min = rows.min(axis=1, keepdims=True)
+    row_scale = np.maximum(_c251_rows_std_keep(rows), 1e-9)
+    floor = row_scale * rng.uniform(0.0, 0.15, size=(sel.size, 1))
+    shift = np.where(row_min < floor, floor - row_min, 0.0)
+    rows += shift
+    int_mask = rng.random(sel.size) < integer_frac
+    if integer_min_std > 0.0 and int_mask.any():
+
+        low = int_mask & (row_scale[:, 0] < integer_min_std)
+        if integer_min_std_frac < 1.0:
+
+            low &= rng.random(sel.size) < integer_min_std_frac
+        if low.any():
+            grow = (integer_min_std / row_scale[low, 0])[:, None]
+            if whole:
+                rows[low] *= grow
+            else:
+                rows[low] = rows[low] * grow
+    if whole and int_mask.all():
+        np.rint(rows, out=rows)
+        _spread_flat_levels(rng, rows, flat_level_spread)
+        return block
+    if int_mask.any():
+        int_sel = sel[int_mask]
+        int_rows = _spread_flat_levels(
+            rng, np.rint(rows[int_mask]), flat_level_spread
+        )
+        block[int_sel] = int_rows
+        keep = ~int_mask
+        if keep.any():
+            block[sel[keep]] = rows[keep]
+    else:
+        block[sel] = rows
+    return block
+
+
+_apply_nonneg_integer_prior = _c251_apply_nonneg_integer_prior
+
+
+# ── c251-P12: np.nan_to_num(np.asarray(x, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0) for a 1-D float64
+# array (partner pt rows): a fresh contiguous copy with NaN / +inf / -inf -> 0.0 and every finite value copied
+# bit for bit -- exactly what nan_to_num(copy=True) returns. Other inputs keep numpy's call.
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_nan0_nb(a, out):
+    for k in range(a.shape[0]):
+        v = a[k]
+        out[k] = v if np.isfinite(v) else 0.0
+
+
+def _c251_nan0(x):
+    a = np.asarray(x, dtype=np.float64)
+    if type(a) is np.ndarray and a.ndim == 1:
+        out = np.empty(a.shape[0], dtype=np.float64)
+        _c251_nan0_nb(a, out)
+        return out
+    return np.nan_to_num(a, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+# ═══════════════ c251-P8: per-record generator construction through the exact seeding replica (_c251_rng). ═══════════════
+# Six layer methods build one np.random.default_rng(np.random.SeedSequence(...)) per record (C91 0.54/record once
+# open, C128 0.22, YC 0.19, ACUH 0.18, partner pt 0.13, YQH 0.08; ~13.5 us each). Each method below is uid76's
+# method VERBATIM except (a) that one construction -> _c251_rng(same entropy, same spawn key) (identical PCG64
+# state; seed_seq answers entropy/spawn_key/spawn() like the real SeedSequence) and (b) zero-argument super() ->
+# super(<that class>, self) (a function defined outside the class body has no __class__ cell; same MRO step).
+# The methods are installed on the SAME class objects (looked up through the parent aliases uid76 itself binds), and
+# only when the class still carries uid76's original method (line-number + name check), so a stacked layer that
+# already replaced one keeps its own. In the partner pt method the two np.nan_to_num(...) row cleanups also go
+# through the exact _c251_nan0 (c251-P12).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ═══════════════ c251-P10: exact W9Q coupling statistics (published core: partner/teach 2nd channel on 25% of rows). ═══════════════
+# uid76's method verbatim, with two expression blocks evaluated by numba on the same (2, L) float64 C-contiguous
+# arrays (other shapes keep uid76's expressions):
+#  * coupling: s_c = sqrt(var(diff(z[c]))) with uid76's own _v2_var_nb (two-pass: (0.0 + pairwise) / n mean, then
+#    (0.0 + pairwise((x - m) * (x - m))) / n; sqrt is correctly rounded everywhere); zz = [0, clip((d0 - mean(d0)) /
+#    s0, -6, 6)] with numpy's clip semantics (NaN kept, max(x, -6) then min(., 6)); zz[:p] = 0 for p = first index
+#    with z1 != z1[0]; new row 1 = z1 + (_CPL * s1) * zz (multiply rounded first);
+#  * keep test: all_c std(z[c]) > 1e-9 * (mean|z[c]| + 1e-12) and std(z[0] - z[1]) > 1e-9 * (mean|z| + 1e-12), with
+#    np.std / np.mean's exact pairwise reductions (row-wise for axis=1, over all C*L elements for the flat mean of a
+#    C-contiguous array; verified bit-equal to numpy on random data).
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_std1(x):
+    return np.sqrt(_v2_var_nb(x))
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_w9q_s01(z, out):
+    L = z.shape[1]
+    d = np.empty(L - 1, dtype=np.float64)
+    for c in range(2):
+        for k in range(L - 1):
+            d[k] = z[c, k + 1] - z[c, k]
+        out[c] = _c251_std1(d)
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_w9q_couple(z, s0, c1, zn):
+    L = z.shape[1]
+    d0 = np.empty(L - 1, dtype=np.float64)
+    for k in range(L - 1):
+        d0[k] = z[0, k + 1] - z[0, k]
+    m0 = (0.0 + _v2_pw(d0, 0, L - 1)) / (L - 1)
+    p = 0
+    z10 = z[1, 0]
+    for k in range(L):
+        if z[1, k] != z10:
+            p = k
+            break
+    for k in range(L):
+        zn[0, k] = z[0, k]
+    zn[1, 0] = z[1, 0] + c1 * 0.0
+    for k in range(1, L):
+        if k < p:
+            v = 0.0
+        else:
+            v = (d0[k - 1] - m0) / s0
+            if not np.isnan(v):
+                v = v if v > -6.0 else -6.0
+                if not np.isnan(v):
+                    v = v if v < 6.0 else 6.0
+        zn[1, k] = z[1, k] + c1 * v
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_rows_ok(z, eps, tiny):
+    C = z.shape[0]
+    L = z.shape[1]
+    a = np.empty(L, dtype=np.float64)
+    for c in range(C):
+        row = z[c]
+        for k in range(L):
+            a[k] = abs(row[k])
+        ma = (0.0 + _v2_pw(a, 0, L)) / L
+        if not (_c251_std1(row) > eps * (ma + tiny)):
+            return False
+    for k in range(L):
+        a[k] = z[0, k] - z[1, k]
+    sd = _c251_std1(a)
+    flat = z.reshape(C * L)
+    b = np.empty(C * L, dtype=np.float64)
+    for k in range(C * L):
+        b[k] = abs(flat[k])
+    mall = (0.0 + _v2_pw(b, 0, C * L)) / (C * L)
+    return sd > eps * (mall + tiny)
+
+
+
+
+
+
+# ── c251-P10b: the same exact coupling / keep-test kernels for the BAND layer (band-teach 2nd channel on univariate
+# rows): uid76's method verbatim apart from those two expression blocks (and super() -> super(<class>, self)).
+
+
+
+
+# ═══════════════ c251-P13: exact numba scalar recurrences (W86B / W86R / C128 row builders written as Python loops). ═══════════════
+# Each function is uid76's VERBATIM with one fast path inserted right before its scalar loop (after every RNG call of
+# the function that precedes the loop, which therefore runs unchanged and in order). The fast path replays the loop
+# body in numba with the same separately rounded IEEE float64 operations in the same order (fastmath off: no FMA
+# contraction, no reassociation):
+#   _w86e2_ar / _w86e2_ar_e / _w86r_ar / _c128_mobility_ar1:  p = phi * p + e[t]
+#   _w86r_garch:  e = sqrt(h) * z[t]; h = (w + a * min(e * e, 60.0)) + b * h  (sqrt correctly rounded on every IEEE
+#                 host; Python min(x, 60.0) == (60.0 if 60.0 < x else x), NaN kept)
+#   _w86e2_flow:  p = (p + k * (tgt[t] - p)) + e[t]
+# The fast path is taken only when every operand is a float64 (1-D float64 ndarray of the loop's length; scalars that
+# are Python float / np.float64), so Python's mixed-type promotion cannot have made the original compute any step in
+# another precision; anything else runs uid76's loop. The loops contain no RNG call and nothing after them reads the
+# loop variable, so the returned arrays carry identical bits and the RNG state is untouched.
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_ar_fill(out, e, phi, p):
+    for t in range(e.shape[0]):
+        p = phi * p + e[t]
+        out[t] = p
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_garch_fill(out, z, w, a, b):
+    h = 1.0
+    for t in range(z.shape[0]):
+        e = np.sqrt(h) * z[t]
+        out[t] = e
+        ee = e * e
+        mm = 60.0 if 60.0 < ee else ee
+        h = w + a * mm + b * h
+
+
+@_c251_njit(cache=False, fastmath=False, nogil=True)
+def _c251_flow_fill(x, tgt, e, p, k):
+    for t in range(x.shape[0]):
+        p = p + k * (tgt[t] - p) + e[t]
+        x[t] = p
+
+
+def _c251_f64vec(a, n=None):
+    return (type(a) is np.ndarray and a.dtype == np.float64 and a.ndim == 1
+            and (n is None or a.shape[0] == n))
+
+
+def _c251_f64s(*v):
+    return all(isinstance(t, float) for t in v)
+
+
+def _c251_w86e2_ar(r, m, phi, sd):
+    e = r.standard_normal(m) * sd * np.sqrt(max(1.0 - phi * phi, 1e-6))
+    out = np.empty(m)
+    p = r.standard_normal() * sd
+    if _c251_f64vec(e, out.shape[0]) and _c251_f64s(phi, p):
+        _c251_ar_fill(out, e, float(phi), float(p))
+        return out
+    for t in range(m):
+        p = phi * p + e[t]
+        out[t] = p
+    return out
+
+
+def _c251_w86e2_ar_e(e, phi):
+    out = np.empty(e.size)
+    p = 0.0
+    if _c251_f64vec(e) and _c251_f64s(phi):
+        _c251_ar_fill(out, e, float(phi), p)
+        return out
+    for t in range(e.size):
+        p = phi * p + e[t]
+        out[t] = p
+    return out
+
+
+def _c251_w86e2_flow(r, M, P, tod, day, dow):
+
+    nd = int(day[-1]) + 1
+    C = _w86e2_lu(r, 30.0, 2500.0)
+    mu = r.uniform(-0.7, 1.3) if r.random() < 0.55 else (1.0 if r.random() < 0.6 else -1.0) * r.uniform(1.0, 2.5)
+    hq = max(P // 24, 1)
+    nh = M // hq + 2
+    hidx = (np.arange(M) + int(r.integers(0, hq))) // hq
+    sch = mu + r.uniform(0.6, 1.5) * _w86e2_smooth(r, nh, 24.0 * r.uniform(0.4, 3.0)) \
+        + r.uniform(0.0, 0.05) * r.standard_normal(nh) \
+        + r.uniform(0.2, 1.2) * (_w86e2_bump((np.arange(nh) % 24) / 24.0, r.uniform(0.0, 1.0), r.uniform(0.08, 0.2)) - 0.35)
+    tgt = C * sch[hidx]
+    k = r.uniform(0.08, 0.4)
+    x = np.empty(M)
+    p = tgt[0]
+    vol = np.exp(r.uniform(0.3, 0.9) * _w86e2_smooth(r, M, r.uniform(4.0, 40.0)))
+    e = C * r.uniform(0.003, 0.02) * vol * r.standard_normal(M)
+    if _c251_f64vec(tgt, x.shape[0]) and _c251_f64vec(e, x.shape[0]) and _c251_f64s(p, k):
+        _c251_flow_fill(x, tgt, e, float(p), float(k))
+    else:
+        for t in range(M):
+            p = p + k * (tgt[t] - p) + e[t]
+            x[t] = p
+    if r.random() < 0.4:
+        hi = np.quantile(x, r.uniform(0.75, 0.97))
+        lo = np.quantile(x, r.uniform(0.02, 0.2)) if r.random() < 0.5 else -np.inf
+        x = np.clip(x, lo, hi)
+    if r.random() < 0.25:
+        L0 = int(np.exp(r.uniform(np.log(P / 4.0), np.log(3.0 * P))))
+        a = M - L0 - int(r.integers(0, 2 * P)) if r.random() < 0.6 else int(r.integers(0, M))
+        a = max(a, 0)
+        x[a:a + L0] = 0.0
+    if r.random() < 0.1:
+        T = int(np.exp(r.uniform(np.log(64.0), np.log(600.0))))
+        x[-T:] = x[-T - 1]
+    return _w86e2_fq(x, 0 if r.random() < 0.2 else 2)
+
+
+def _c251_w86r_garch(r, m, a_lo=0.03, a_hi=0.12):
+
+    nu = r.uniform(3.3, 8.0)
+    z = np.clip(r.standard_t(nu, m) / np.sqrt(nu / (nu - 2.0)), -14.0, 14.0)
+    a = r.uniform(a_lo, a_hi)
+    b = max(r.uniform(0.9, 0.993) - a, 0.0)
+    w = 1.0 - a - b
+    out = np.empty(m)
+    h = 1.0
+    if _c251_f64vec(z, out.shape[0]) and _c251_f64s(w, a, b):
+        _c251_garch_fill(out, z, float(w), float(a), float(b))
+        return out
+    for t in range(m):
+        e = np.sqrt(h) * z[t]
+        out[t] = e
+        h = w + a * min(e * e, 60.0) + b * h
+    return out
+
+
+def _c251_w86r_ar(r, m, tau, sd):
+    phi = float(np.exp(-1.0 / max(tau, 1.0)))
+    e = r.standard_normal(m) * sd * np.sqrt(1.0 - phi * phi)
+    out = np.empty(m)
+    p = r.standard_normal() * sd
+    if _c251_f64vec(e, out.shape[0]) and _c251_f64s(phi, p):
+        _c251_ar_fill(out, e, float(phi), float(p))
+        return out
+    for t in range(m):
+        p = phi * p + e[t]
+        out[t] = p
+    return out
+
+
+def _c251_c128_mobility_ar1(r, n, phi, sd):
+    phi = float(np.clip(phi, -0.999, 0.999))
+    ea = r.standard_normal(n) * (sd * np.sqrt(max(1.0 - phi * phi, 1e-8)))
+    v = float(r.standard_normal() * sd)
+    if _c251_f64vec(ea) and ea.shape[0] == n:
+        out = np.empty(n, dtype=np.float64)
+        _c251_ar_fill(out, ea, phi, v)
+        return out
+    e = ea.tolist()
+    out = [0.0] * n
+    for i in range(n):
+        v = phi * v + e[i]
+        out[i] = v
+    return np.asarray(out, dtype=np.float64)
+
+
+_w86e2_ar = _c251_w86e2_ar
+_w86e2_ar_e = _c251_w86e2_ar_e
+_w86e2_flow = _c251_w86e2_flow
+_w86r_garch = _c251_w86r_garch
+_w86r_ar = _c251_w86r_ar
+_c128_mobility_ar1 = _c251_c128_mobility_ar1
+
+
+
+_C251NameParent = Generator
+
+
+class Generator(_C251NameParent):
+    @property
+    def name(self) -> str:
+        return 'c251-k76-FAST'
+
+
 # ═══════════════ c259 bundle kinds: DAP15 (15-min day-ahead prices, autumn regime) and AQW (hourly air quality, transient
 # accumulation episodes + fast washouts); calibration notes inline. Plain numpy + lfilter (king76 module globals). ═══════════════
 _C259_TWO_PI = 2.0 * np.pi
@@ -29469,531 +31347,22 @@ class Generator(_C234SParent):
 _PRODUCER_WORKERS = 1
 
 def _k0_serial_base_generate(self, n_series: int) -> Iterator[np.ndarray]:
-
+    """_BaseGenerator.generate without the producer thread: the same chunks, yielded inline."""
     if n_series <= 0:
         return
     rng = np.random.default_rng(self._seed)
-    max_len = self._max_len
-
-    target_points = max(1, max(n_series - 2, 1) * self._min_len)
-
+    target_points = self._target_points(n_series)
     produced = 0
     emitted_points = 0
-    base_seed = self._seed
-
     chunk_index = 0
     while produced < n_series:
-
-        batch_size = chunk_batch_size(produced)
-        lengths = rng.integers(
-            self._min_len, max_len + 1, size=batch_size
-        )
-        take = min(batch_size, n_series - produced)
-        chunk_points = int(lengths[:take].sum())
-        midpoint_progress = self._progress_at(
-            emitted_points + 0.5 * chunk_points, target_points
-        )
-        family_weights = self._weights_at(midpoint_progress)
-        parameters = self._parameters_at(midpoint_progress)
-        builders = (
-            partial(
-                _trend_seasonal_ar,
-                hi_frac=self._tr_hi_frac,
-                exc_lo=parameters["tr_exc_lo"],
-                exc_hi=parameters["tr_exc_hi"],
-                clean_frac=parameters["sa_clean_frac"],
-                clean_lo=parameters["sa_clean_lo"],
-                clean_hi=parameters["sa_clean_hi"],
-            ),
-            _regime_shift,
-            partial(
-                _multiplicative,
-                hi_frac=self._tr_hi_frac,
-                exc_lo=parameters["gr_exc_lo"],
-                exc_hi=parameters["gr_exc_hi"],
-            ),
-            _ar2,
-            partial(
-                _integrated,
-                heavy_frac=parameters["integrated_heavy_frac"],
-                sv_frac=parameters["integrated_sv_frac"],
-            ),
-            _threshold_ar,
-            _chaotic,
-            _spectral_gp,
-            partial(
-                _long_memory,
-                beta_lo=parameters["lm_beta_lo"],
-                beta_hi_end=parameters["lm_beta_hi"],
-            ),
-            _ou_stochastic_vol,
-            _physical_sensors,
-            _seasonal_counts,
-            _intermittent,
-            _pulse_outlier,
-            partial(
-                _conditional_stability,
-                calm_noise=parameters["cs_calm_noise"],
-            ),
-            partial(
-                _step_level,
-                jumps_lo=parameters["step_level_jumps_lo"],
-                jumps_hi=parameters["step_level_jumps_hi"],
-                exact_frac=parameters["step_level_exact_frac"],
-                noise_lo=parameters["step_level_noise_lo"],
-                noise_hi=parameters["step_level_noise_hi"],
-            ),
-            _vol_regime_switch,
-            _weekly_demand,
-            _tidal_harmonic,
-            _flow_recession,
-            _bounded_counts,
-            _held_rate,
-            _spiky_price,
-            _epi_decay,
-            _sticky_station,
-            _grid_flow,
-            _price_shock,
-            _coastal_residual,
-            partial(_cs_flat, calm_noise=parameters["cs_calm_noise"]),
-            partial(_cs_drift, calm_noise=parameters["cs_calm_noise"]),
-            _cs_countwalk,
-            _cs_pulse,
-            _rk4_chaotic,
-            _tidal_constituents,
-            _envelope_mod,
-            _rate_counts,
-            _dispersion_counts,
-            _dispatch_blocks,
-
-            *self._cf_builders,
-
-            _cycle_profile,
-            _transport_flow_tail,
-            _capacity_counts,
-            _overdispersed_counts,
-            _reported_epi_counts,
-            _retail_promo_tail,
-            _heavy_traffic_counts,
-            _sparse_admin_counts,
-            _storm_outage_counts,
-            _gauge_rain,
-            _store_sales_panel,
-            _web_session_attr,
-            _broadband_path_attr,
-            _cluster_job_attr,
-            _sales_promo_stockout_panel,
-            _settle_hold,
-            _web_traffic_plateau,
-            _biz_day_counts,
-            _weekly_web_counts,
-            _dispatch_price,
-            _epi_season_decay,
-            _weekday_ledger_counts,
-            _surveillance_counts,
-            _pull_counter_ramp,
-            _weekly_cycle_downloads,
-            _hourly_social_counts,
-            _intraday_event_counts,
-            _intraday_spot_price,
-            _road_commute_counts,
-        )
-        current_observation = {
-            key.removeprefix("observation."): value
-            for key, value in parameters.items()
-            if key.startswith("observation.")
-        }
-        domain_weights = self._domain_weights_at(midpoint_progress)
-        if domain_weights is not None:
-            fam_ids = dispatch_domain_mix(
-                base_seed,
-                chunk_index,
-                batch_size,
-                domain_weights,
-                family_weights,
-                self._domain_pool_indices,
-            )
-        else:
-
-            dispatch_u = rng.random(batch_size)
-            fam_base = _DISPATCH_REF_CDF.searchsorted(
-                dispatch_u, side="right"
-            )
-            if np.array_equal(family_weights, _DISPATCH_REF):
-                fam_ids = fam_base
-            else:
-                excess = np.maximum(
-                    family_weights - _DISPATCH_REF, 0.0
-                )
-                excess_total = excess.sum()
-                if excess_total <= 0.0:
-                    fam_ids = fam_base
-                else:
-                    dispatch_rng = np.random.default_rng(
-                        np.random.SeedSequence(
-                            (base_seed, chunk_index,
-                             _DISPATCH_STREAM_FAM, 0, 0)
-                        )
-                    )
-                    keep_u = dispatch_rng.random(batch_size)
-                    move_u = dispatch_rng.random(batch_size)
-                    keep_prob = np.where(
-                        _DISPATCH_REF > 0.0,
-                        np.minimum(
-                            np.divide(
-                                family_weights,
-                                _DISPATCH_REF,
-                                out=np.ones_like(family_weights),
-                                where=_DISPATCH_REF > 0.0,
-                            ),
-                            1.0,
-                        ),
-                        1.0,
-                    )
-                    excess_cdf = np.cumsum(excess / excess_total)
-                    excess_cdf /= excess_cdf[-1]
-                    released = keep_u >= keep_prob[fam_base]
-                    fam_ids = fam_base.copy()
-                    fam_ids[released] = excess_cdf.searchsorted(
-                        move_u[released], side="right"
-                    )
-
-        slots = np.arange(batch_size, dtype=np.int64)
-
-        tags = (0, 1, 2, 3) if parameters["tail_rebase_rate"] > 0.0 \
-            else (0, 1, 2)
-        stream_words = []
-        for tag in tags:
-            cols = _ss_columns(
-                [base_seed, chunk_index, fam_ids, slots, tag],
-                batch_size,
-            )
-            stream_words.append(
-                None if cols is None else _pcg64_seed_words(cols)
-            )
-        n_tags = len(tags)
-
-        def _stream(tag: int, slot: int, fam: int):
-            words = stream_words[tag]
-            if words is None:
-                return np.random.default_rng(
-                    np.random.SeedSequence(
-                        (base_seed, chunk_index, fam, slot, tag)
-                    )
-                )
-            return _row_pool(n_tags).seeded(tag, *words[slot])
-
-        chunk: list[np.ndarray | None] = [None] * batch_size
-
-        support_protected = np.zeros(batch_size, dtype=bool)
-        native_no_pad = np.zeros(batch_size, dtype=bool)
-
-        def _build_family_group(fam: int, idx: np.ndarray) -> None:
-            family = _FAMILIES[fam]
-            preserve_nonnegative = family in {
-                "sticky_station",
-                "epi_decay",
-                "multiplicative",
-                "physical_sensors",
-                "seasonal_counts",
-                "intermittent",
-
-                "grid_flow",
-                "spiky_price",
-                "price_shock",
-
-                "tidal_constituents",
-
-                "flow_recession",
-
-                "rate_counts",
-
-                "dispersion_counts",
-
-                "dispatch_blocks",
-
-                "ops_diurnal_traffic",
-                "ops_saturating_feedback",
-                "ops_counter_reset",
-                "ops_latency_queue",
-                "ops_rate_plateau",
-                "epi_renewal",
-                "admin_reporting_counts",
-                "clinical_bounded_vitals",
-
-                "met_bounded_atom", "met_wind_speed",
-                "wet_dry_intermittent", "regime_dwell_zerosparse",
-                "hawkes_marked", "transport_flow",
-                "retail_promo_intermittent",
-
-                "energy_load_price_solar",
-
-                "heavy_traffic_counts",
-                "sparse_admin_counts",
-                "storm_outage_counts",
-                "gauge_rain",
-                "store_sales_panel",
-                "sales_promo_stockout_panel",
-                "web_session_attr",
-                "broadband_path_attr",
-                "cluster_job_attr",
-                "settle_hold",
-                "web_traffic_plateau",
-                "biz_day_counts",
-                "weekly_web_counts",
-                "weekly_demand",
-            }
-            clean = family in _CLEAN
-            preserve_integers = family in {
-                "sticky_station",
-                "epi_decay",
-                "seasonal_counts",
-                "intermittent",
-                "rate_counts",
-                "dispersion_counts",
-                "dispatch_blocks",
-
-                "epi_renewal",
-                "admin_reporting_counts",
-                "ops_counter_reset",
-                "ops_diurnal_traffic",
-                "retail_promo_intermittent",
-                "heavy_traffic_counts",
-                "sparse_admin_counts",
-                "storm_outage_counts",
-                "sales_promo_stockout_panel",
-                "web_session_attr",
-                "cluster_job_attr",
-                "web_traffic_plateau",
-                "biz_day_counts",
-                "weekly_web_counts",
-            }
-            allow_reverse = family in {
-                "trend_seasonal_ar",
-                "multiplicative",
-                "spectral_gp",
-                "long_memory",
-            }
-            allow_range_artifacts = family != "integrated"
-
-            anchor = int(idx[0])
-            policy = self._support_contract
-            builder = builders[fam]
-            metadata_builder = getattr(builder, "with_metadata", None)
-            flags = None
-            if metadata_builder is not None and (
-                policy["restore_bounded_native"] or policy["guard_mixing"]
-                or self._temporal_integrity["native_integer_flags"]
-            ):
-                block, flags = metadata_builder(
-                    _stream(0, anchor, fam), int(idx.size), max_len
-                )
-            else:
-                block = builder(_stream(0, anchor, fam), int(idx.size), max_len)
-            bounded_mask = _native_bounded_mask(flags, int(idx.size))
-            if (preserve_integers and flags is not None
-                    and self._temporal_integrity["native_integer_flags"]):
-                preserve_integers = np.asarray(flags["integer"], dtype=bool)
-                if preserve_integers.shape != (idx.size,):
-                    raise ValueError("native integer flags must have one value per row")
-            restore_mask = bounded_mask & policy["restore_bounded_native"]
-
-            native_rows = block[restore_mask].copy() if restore_mask.any() else None
-            signed_family = family in _NATIVE_SIGNED_FAMILIES
-            clip_nonnegative = preserve_nonnegative and not (
-                policy["restore_signed"] and signed_family
-            )
-            if policy["guard_mixing"]:
-                support_protected[idx] = bounded_mask | signed_family
-            native_no_pad[idx] = restore_mask
-            if clean:
-                block = _sanitize(block)
-            else:
-                block = _sanitize(
-                    _measurement_artifacts(
-                        _stream(1, anchor, fam),
-                        block,
-                        preserve_nonnegative=preserve_nonnegative,
-                        clip_nonnegative=clip_nonnegative,
-                        repair_degenerate_rollback=policy["repair_degenerate_rollback"],
-                        preserve_integers=preserve_integers,
-                        allow_reverse=allow_reverse,
-                        allow_range_artifacts=allow_range_artifacts,
-                        preserve_pre_gamma_shape=(
-                            (_HARRY_TIDAL_GAMMA_BYPASS
-                             and family == "tidal_constituents")
-                            or (_HARRY_I029_GRID_FLOW_GAMMA_BYPASS
-                                and family == "grid_flow")
-                        ),
-                        **(dict(current_observation, time_warp_rate=0.0,
-                                global_dilation_rate=0.0)
-                           if family in _V444_CLOCK_FAMILIES
-                           else current_observation),
-                    )
-                )
-            if not preserve_nonnegative:
-                post_rng = _stream(2, anchor, fam)
-                block = _apply_nonneg_integer_prior(
-                    post_rng, block,
-                    integer_min_std=parameters[
-                        "nonneg_integer_min_std"
-                    ],
-                    integer_min_std_frac=parameters[
-                        "nonneg_integer_min_std_frac"
-                    ],
-                    integer_frac=parameters[
-                        "nonneg_integer_frac"
-                    ],
-                    flat_level_spread=parameters[
-                        "flat_level_spread"
-                    ],
-                )
-                block = _apply_zero_inflation(post_rng, block)
-
-            if (parameters["tail_rebase_rate"] > 0.0
-                    and family not in ("ops_counter_reset", "pull_counter_ramp", "epi_season_decay", "surveillance_counts",
-                               "epi_renewal", "reported_epi_counts", "epi_decay")):
-                block = _apply_tail_rebase(
-                    _stream(3, anchor, fam), block,
-                    parameters["tail_rebase_rate"],
-                    periodic_continue=True,
-                    preserve_periodic_native=(
-                        _TIDAL_NATIVE_PERIODIC_ENABLED
-                        and family == "tidal_constituents"
-                    ),
-                )
-            block = _apply_unique_idea(
-                family, block, base_seed, chunk_index, fam
-            )
-            if clip_nonnegative:
-                np.maximum(block, 0.0, out=block)
-            if native_rows is not None:
-                block[restore_mask] = native_rows
-            block = _flow_reporting_memory(
-                block, family, base_seed, chunk_index, fam,
-                int(idx[0]), 8, 'rolling', 0.5)
-            for k in range(int(idx.size)):
-                slot = int(idx[k])
-                length = int(lengths[slot])
-                chunk[slot] = np.ascontiguousarray(
-                    block[k, :length], dtype=np.float64
-                )
-
-        groups = []
-        for fam in range(len(_FAMILIES)):
-            fam_idx = np.nonzero(fam_ids == fam)[0]
-            if fam_idx.size:
-                groups.append((fam, fam_idx))
-        if _PRODUCER_WORKERS > 1 and len(groups) > 1:
-            _run_family_groups(_build_family_group, groups)
-        else:
-            for fam, fam_idx in groups:
-                _build_family_group(fam, fam_idx)
-
-        if self._min_len == max_len:
-            mix_rate = parameters["augment.tsmixup"]
-            mixed = np.nonzero(rng.random(batch_size) < mix_rate)[0]
-            mix_alpha = parameters["tsmixup_source_alpha"]
-            mix_scaled = parameters["tsmixup_mean_scale"] >= 0.5
-            for series_i in mixed:
-                source = chunk[series_i]
-                if source is None:
-                    continue
-                n_other = int(rng.integers(1, 3))
-                others = rng.integers(0, batch_size, size=n_other)
-
-                alpha = np.ones(n_other + 1)
-                alpha[0] = mix_alpha
-                weights = rng.dirichlet(alpha)
-                if self._support_contract["guard_mixing"] and not _mixup_support_compatible(
-                    support_protected, int(series_i), others
-                ):
-                    continue
-                parts = [source]
-                valid = True
-                for other_i in others:
-                    other = chunk[int(other_i)]
-                    if other is None:
-                        valid = False
-                        break
-                    parts.append(other)
-                if not valid:
-                    continue
-                if mix_scaled:
-
-                    unit = []
-                    for part in parts:
-                        s = float(_v2_mean(np.abs(part)))
-                        unit.append(part / s if s > 1e-12 else part)
-                    source_scale = float(_v2_mean(np.abs(source)))
-                    combined = weights[0] * unit[0]
-                    for j, part in enumerate(unit[1:]):
-                        combined = combined + weights[j + 1] * part
-                    if source_scale > 1e-12:
-                        combined = combined * source_scale
-                else:
-                    combined = weights[0] * parts[0]
-                    for j, part in enumerate(parts[1:]):
-                        combined = combined + weights[j + 1] * part
-                chunk[series_i] = _sanitize(combined)
-
-        pad_rate = parameters["augment.pad_prefix"]
-        padded = np.nonzero(rng.random(batch_size) < pad_rate)[0]
-        for series_i in padded:
-            series = chunk[series_i]
-            if series is None or series.size < 8:
-                continue
-            cut = int(rng.integers(series.size // 8, 3 * series.size // 4))
-            if native_no_pad[series_i]:
-                continue
-            series[:cut] = series[cut]
-
-        if self._renewal_persistence["rate"] > 0.0:
-            _apply_renewal_persistence(
-                chunk, fam_ids, base_seed, chunk_index,
-                self._renewal_persistence,
-            )
-
-        if _CAS1_INTERIOR_REBASE_RATE > 0.0:
-            for fam, fam_idx in groups:
-                family = _FAMILIES[fam]
-                if family == "ops_counter_reset":
-                    continue
-                parent_rows = np.stack(
-                    [chunk[int(i)] for i in fam_idx]
-                )
-                rows = parent_rows.copy()
-                for episode_i, endpoint in enumerate(
-                        _CAS1_INTERIOR_REBASE_ENDPOINTS):
-                    episode_rng = np.random.default_rng(
-                        np.random.SeedSequence(
-                            (base_seed, chunk_index, fam,
-                             _CAS1_INTERIOR_REBASE_STAGE + episode_i)
-                        )
-                    )
-                    proposed = _apply_interior_rebase_episode(
-                        episode_rng, parent_rows.copy(),
-                        _CAS1_INTERIOR_REBASE_RATE,
-                        endpoint=endpoint,
-                        periodic_continue=True,
-                        preserve_periodic_native=(
-                            _TIDAL_NATIVE_PERIODIC_ENABLED
-                            and family == "tidal_constituents"
-                        ),
-                        route_mode=_CAS1_INTERIOR_REBASE_ROUTE,
-                    )
-                    changed = proposed != parent_rows
-                    rows[changed] = proposed[changed]
-                for k, slot in enumerate(fam_idx):
-                    chunk[int(slot)] = rows[k]
-        for arr in chunk[:take]:
-
-            if arr is None:
-                raise RuntimeError("internal: unfilled series slot")
-            yield arr
+        chunk, take, chunk_points = self._produce_chunk(
+            rng, chunk_index, produced, emitted_points, n_series, target_points)
+        yield from _checked_chunk_rows(chunk, take)
         produced += take
         emitted_points += chunk_points
         chunk_index += 1
+
 
 _K0_THREADED_BASE_GENERATE = _BaseGenerator.generate  # the replaced threaded method (the serial-vs-threaded gate uses it)
 _BaseGenerator.generate = _k0_serial_base_generate
