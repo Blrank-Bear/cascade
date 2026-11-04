@@ -978,6 +978,10 @@
   [
    "grid_gpu4@20261103T115910Z:mxo",
    "multi-feature (3 switches differ)"
+  ],
+  [
+   "grid_gpu4@20261104T000042Z:ovlhalf",
+   "multi-feature (2 switches differ)"
   ]
  ]
 }
