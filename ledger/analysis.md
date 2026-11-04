@@ -70,3 +70,4 @@ Rules: ADOPT-CANDIDATE needs ≥3 seeds, every seed > 0, t ≥ 2.5, no horizon b
 - `grid_gpu4s2@20261104T021725Z:ovlhalf`: multi-feature (2 switches differ)
 - `grid_gpu4s3@20261104T043344Z:ovlhalf`: multi-feature (2 switches differ)
 - `grid_gpu4s4@20261104T043344Z:ovlhalf`: multi-feature (2 switches differ)
+- `grid_gpu4@20261104T054121Z:ovlhalfg`: multi-feature (2 switches differ)
