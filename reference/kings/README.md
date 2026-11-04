@@ -15,3 +15,4 @@ These are snapshots of the Lane A king, exported from the `champions/king/` hist
 - Never run this code outside a sandbox (see each `SCAN.json` note).
 - Never submit a copy or near-copy: dedup drops it and burns the hotkey (DEC-CA-0008).
 - For the live king, use `cascade fetch king --out DIR` once the CLI is installed.
+| **2026-11-04-716765dcf2f6** | **716765dc…** (reign 13, first v2 king, crowned 2026-11-04 04:33 UTC) | 04e22672… | 30,390 |

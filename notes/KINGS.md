@@ -166,3 +166,25 @@ The assessments below are my judgment from reading the code, not measured result
 - **Keep:** holds (at a moderate share), tail laws, measurement realism, cadence and calendar correctness, short padded histories, seeded substreams.
 - **Fix:** a balanced mix for training from random init; genuine coupled groups in the 32 channels; a clean single module; v2-sized throughput and memory.
 - **Avoid:** copying king code, exec/packed code, budget-gated tricks, over-fitting to the current snapshot.
+
+## Reign 13 king (first v2 king): 716765dc, uid 220, crowned 2026-11-04 04:33 UTC
+- Study copy: `reference/kings/2026-11-04-716765dcf2f6/` (static read only, never run).
+- Base: c268 (a later v1 lineage than our c251-based foundation), byte-identical above its K0 banner.
+- Layers appended on top (none adds new series families):
+  1. **K0 serial mode + budget rescale**: budget-gated layers open at the same stream fraction as in v1.
+  2. **K0-32G packer**: exactly 32 channels, one group label per packed record.
+  3. **MAGGUARD**: rows with peak > 1e4 rescaled (energy-score float32 overflow).
+  4. **SINGLETONS**: every channel its own group (np.arange(32)); about 88% of eval windows are univariate.
+  5. **MVKEEP**: 10% of multichannel records keep their group, so variate attention still trains.
+  6. **PADK-NEAR**: channels whose first move is in the last 1024 points become exactly constant
+     (teaches the "long constant prefix" forecast case).
+  7. **LCP-LATE**: from child yield 10,837 on, the start of the WSD cooldown at update 21,674 of
+     23,840, several hooks switch to "late" values. It is a curriculum keyed to the trainer's schedule.
+- **Why our screen could not see most of this:**
+  - The 28m / 396-step screen consumes about 6.4k yields in total, against about 11.9k per child and
+    23,840 updates in a real round.
+  - Stream-position effects never occur in the screen: budget-gated layers opening at 20% of a child
+    stream, and the cooldown switch.
+  - Singleton groups were tested only once, combined with jumps (jsz05sing), on one seed
+    (-0.98%), and dropped. That is a single-seed, multi-feature verdict, the same noise trap as
+    mrovlg60.
