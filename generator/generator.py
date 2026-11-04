@@ -32030,3 +32030,39 @@ class Generator(_OvlParent):
             yield from super().generate(n_series)
         finally:
             _OVL_STATE.update(cfg=None, i=0)
+
+
+# ── mvkp: MVKEEP share of multichannel records that keep their group (switchable) ──
+# Singleton labels give the variate blocks' query/key no gradient; MVKEEP lets only 10% of
+# multichannel records keep their record group, so on the ~10% multichannel eval windows (C = 2-7,
+# forecast jointly with groups=None) channel mixing is barely trained. v2_mvk.json {"p": x} sets
+# _MVK_P for this generator's stream (label-only: values stay byte-identical). Default: the king's 0.1.
+_MVKP_FILE = "v2_mvk.json"
+
+
+def _mvkp_load_p(config_dir: str):
+    path = Path(config_dir) / _MVKP_FILE
+    if not path.is_file():
+        return None
+    return float(json.loads(path.read_text(encoding="utf-8"))["p"])
+
+
+_MvkpParent = Generator
+
+
+class Generator(_MvkpParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._mvkp_p = _mvkp_load_p(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series):
+        global _MVK_P
+        if self._mvkp_p is None:
+            yield from super().generate(n_series)
+            return
+        keep = _MVK_P
+        _MVK_P = self._mvkp_p
+        try:
+            yield from super().generate(n_series)
+        finally:
+            _MVK_P = keep
