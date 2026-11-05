@@ -1,0 +1,3 @@
+{"base": {"v2_lcpr.json": {"on": true}},
+ "ovltL": {"v2_lcpr.json": {"on": true}, "v2_ovl.json": {"level_rate": 0.2, "amp_rate": 0.0, "phase": "trunk"}},
+ "ovltA": {"v2_lcpr.json": {"on": true}, "v2_ovl.json": {"level_rate": 0.0, "amp_rate": 0.2, "phase": "trunk"}}}
