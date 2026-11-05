@@ -32125,3 +32125,82 @@ def _ovs_apply(a: np.ndarray, seed: int, i: int, cfg: dict) -> np.ndarray:
 
 
 _ovl_apply = _ovs_apply
+
+
+# ── ovf: per-family overlay rate multipliers (switchable) ──
+# Trunk-phase dose arms (k13f): transport gains rise with the overlay rate (+2.4 / +2.2% at 0.25 /
+# 0.40) while health / energy fall (to -1.8%), so one uniform rate cannot serve both. v2_ovl.json
+# "family_rate_mult" {family name: m} (and "family_rate_default", default 1.0) scale level_rate and
+# amp_rate per record by its base family. Empty map (default) = the ungated rates, byte-identical.
+# A record's family = that of the base row yielded last before the record reaches _k0_record
+# (the stream is serial; on every record whose bytes still match a base row this agreed 174 / 174).
+import collections  # noqa: E402
+
+_OVF_STATE = {"on": False, "last": None, "cur": None}
+_OVF_BASE_GENERATE = _BaseGenerator.generate
+_OVF_DISPATCH = _BaseGenerator._dispatch_families
+_OVF_INNER_APPLY = _ovl_apply
+_OVF_RECORD = _k0_record
+
+
+def _ovf_dispatch_families(self, rng, chunk_index: int, batch_size: int, family_weights, progress):
+    fam_ids = _OVF_DISPATCH(self, rng, chunk_index, batch_size, family_weights, progress)
+    if _OVF_STATE["on"]:
+        self.__dict__.setdefault("_ovf_queue", collections.deque()).extend(int(f) for f in fam_ids)
+    return fam_ids
+
+
+def _ovf_base_generate(self, n_series: int):
+    for row in _OVF_BASE_GENERATE(self, n_series):
+        q = self.__dict__.get("_ovf_queue")
+        if _OVF_STATE["on"] and q:
+            _OVF_STATE["last"] = _FAMILIES[q.popleft()]
+        yield row
+
+
+def _ovf_rate_mult(cfg: dict, fam) -> float:
+    table = cfg.get("family_rate_mult") or {}
+    return float(table.get(fam, cfg.get("family_rate_default", 1.0)))
+
+
+def _ovf_scaled_cfg(cfg: dict, m: float) -> dict:
+    return {**cfg, "level_rate": float(cfg["level_rate"]) * m, "amp_rate": float(cfg["amp_rate"]) * m}
+
+
+def _ovf_apply(a: np.ndarray, seed: int, i: int, cfg: dict) -> np.ndarray:
+    if not _OVF_STATE["on"]:
+        return _OVF_INNER_APPLY(a, seed, i, cfg)
+    m = _ovf_rate_mult(cfg, _OVF_STATE["cur"])
+    return _OVF_INNER_APPLY(a, seed, i, cfg if m == 1.0 else _ovf_scaled_cfg(cfg, m))
+
+
+def _k0_record(x):
+    if _OVF_STATE["on"]:
+        _OVF_STATE["cur"] = _OVF_STATE["last"]
+    return _OVF_RECORD(x)
+
+
+_BaseGenerator.generate = _ovf_base_generate
+_BaseGenerator._dispatch_families = _ovf_dispatch_families
+_ovl_apply = _ovf_apply
+
+
+def _ovf_wanted(cfg) -> bool:
+    if not cfg or not _ovl_on(cfg):
+        return False
+    return bool(cfg.get("family_rate_mult")) or float(cfg.get("family_rate_default", 1.0)) != 1.0
+
+
+_OvfParent = Generator
+
+
+class Generator(_OvfParent):
+    def generate(self, n_series):
+        if not _ovf_wanted(getattr(self, "_ovl_cfg", None)):
+            yield from super().generate(n_series)
+            return
+        _OVF_STATE.update(on=True, last=None, cur=None)
+        try:
+            yield from super().generate(n_series)
+        finally:
+            _OVF_STATE.update(on=False, last=None, cur=None)
