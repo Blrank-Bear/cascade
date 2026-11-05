@@ -121,3 +121,20 @@ Goldens are byte-identical to the unchanged king (`tests/golden/run_k13.sh`). Th
 ### Next (arms_k13f)
 - Trunk-phase dose 0.25 and 0.40, both seeds.
 - Rationale: with the cooldown kept clean, the trunk may tolerate more overlay than all-phase did.
+
+## Update 11-05 03:55 UTC: trunk dose (arms_k13f)
+| arm | s0 | s1 | mean |
+|---|---|---|---|
+| ovltrunk (0.15) | +0.72 | +0.48 | +0.60 |
+| ovlt25 (0.25) | +0.52 | +0.65 | +0.59 |
+| ovlt40 (0.40) | -0.07 | -0.23 | -0.15 |
+
+- **Dose curve:** a plateau at 0.15-0.25, then a collapse at 0.40.
+- **By domain:**
+  - Transport rises with dose: +1.7 / +2.4 / +2.2 (s0).
+  - Health / energy fall: health +0.15 / -0.47 / -1.80, energy -0.35 / -0.48 / -0.80.
+- **Reading:** one uniform rate trades transport gains against health / energy losses.
+- **Next:**
+  - Queued arms_k13g: level-only vs amplitude-only at 0.2, to see which overlay carries the gain and which the damage.
+  - Feature `ovf` (per-family rate multipliers); arms_k13h ovft25 = trunk 0.25 with health / energy families muted, including the novel-stream epi_season_decay (~5% of records).
+  - Stream composition (seed 0, 951 records): held_rate 56%, epi_season_decay 5%, conditional_stability 5%, road_commute_counts 2%.
