@@ -32289,3 +32289,125 @@ class Generator(_QntParent):
             yield from super().generate(n_series)
         finally:
             _QNT_STATE.update(cfg=None, i=0)
+
+
+# ── jmp: persistent level shifts and one-step outliers on records (switchable; port of c251 v2_jumps) ──
+# Pool diffs are heavier-tailed than the generator's (level shifts, glitches, demand/price spikes).
+# On the old base, jumps rate 1.0 with sizes 0.5-5 steps (j100sz05) was +0.26% over 8 seeds, carried by
+# h64 (+1.37%) with a small h720 cost (-0.55%); like ovl, it runs in the trunk phase by default so the
+# cooldown keeps the king's mix. With probability `rate` per record, each channel gets a Poisson number
+# of shifts and outliers (counts per 4096 points log-uniform up to max_shifts / max_outliers), sized in
+# multiples of the channel's median absolute step (exponential, mean log-uniform in [size_min, size_max]).
+# Sizes snap to the channel's value grid when it has one (integer or qnt-quantized channels stay on
+# their tick). Constant, binary and non-finite channels are left alone; non-negative channels stay
+# non-negative. Applied after qnt. v2_jmp.json; rate 0 = off.
+_JMP_TAG = 0x7A2F0202
+_JMP_FILE = "v2_jmp.json"
+_JMP_LENGTH = 4096
+_JMP_DEFAULTS = {"rate": 0.0, "max_shifts": 24.0, "max_outliers": 0.25, "size_min": 0.5, "size_max": 5.0,
+                 "phase": "trunk"}
+_JMP_STATE = {"cfg": None, "seed": 0, "i": 0}
+_JMP_RECORD = _k0_record
+
+
+def _jmp_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _JMP_FILE
+    if not path.is_file():
+        return dict(_JMP_DEFAULTS)
+    return {**_JMP_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _jmp_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _JMP_TAG], spawn_key=(i,)))
+
+
+def _jmp_grid_unit(ch: np.ndarray) -> float:
+    """The channel's value tick (smallest nonzero step) if every step is a multiple of it, else 0."""
+    d = np.abs(np.diff(ch))
+    d = d[d > 0]
+    if not d.size:
+        return 0.0
+    q = d / d.min()
+    return float(d.min()) if bool(np.allclose(q, np.round(q), rtol=0.0, atol=1e-6)) else 0.0
+
+
+def _jmp_sizes(rng, n: int, step: float, unit: float, cfg: dict) -> np.ndarray:
+    mean = _ovl_log_uniform(rng, float(cfg["size_min"]), float(cfg["size_max"]))
+    s = rng.choice((-1.0, 1.0), n) * rng.exponential(mean, n) * step
+    return np.round(s / unit) * unit if unit > 0.0 else s
+
+
+def _jmp_count(rng, L: int, max_rate: float) -> int:
+    if max_rate <= 0.25:
+        return int(rng.poisson(max_rate * L / _JMP_LENGTH))
+    return int(rng.poisson(_ovl_log_uniform(rng, 0.25, max_rate) * L / _JMP_LENGTH))
+
+
+def _jmp_shifts(rng, L: int, step: float, unit: float, cfg: dict) -> np.ndarray:
+    out = np.zeros(L)
+    n = _jmp_count(rng, L, float(cfg["max_shifts"]))
+    if n:
+        out[rng.integers(1, L, n)] = _jmp_sizes(rng, n, step, unit, cfg)
+    return np.cumsum(out)
+
+
+def _jmp_outliers(rng, L: int, step: float, unit: float, cfg: dict) -> np.ndarray:
+    out = np.zeros(L)
+    n = _jmp_count(rng, L, float(cfg["max_outliers"]))
+    if n:
+        out[rng.integers(0, L, n)] = _jmp_sizes(rng, n, step, unit, cfg)
+    return out
+
+
+def _jmp_skips(ch: np.ndarray) -> bool:
+    return not bool(np.isfinite(ch).all()) or np.unique(ch).size <= 2
+
+
+def _jmp_channel(ch: np.ndarray, rng, cfg: dict) -> np.ndarray:
+    if _jmp_skips(ch):
+        return ch
+    step = _qnt_typical_step(ch)
+    if step <= 0.0:
+        return ch
+    unit = _jmp_grid_unit(ch)
+    L = ch.size
+    y = ch + _jmp_shifts(rng, L, step, unit, cfg) + _jmp_outliers(rng, L, step, unit, cfg)
+    return np.maximum(y, 0.0) if ch.min() >= 0.0 else y
+
+
+def _jmp_apply(a: np.ndarray, seed: int, i: int, cfg: dict) -> np.ndarray:
+    rng = _jmp_rng(seed, i)
+    if rng.random() >= float(cfg["rate"]):
+        return a
+    return _ovl_safe(a, np.stack([_jmp_channel(ch, rng, cfg) for ch in a]))
+
+
+def _k0_record(x):
+    a = _JMP_RECORD(x)
+    cfg = _JMP_STATE["cfg"]
+    if a is None or cfg is None:
+        return a
+    i = _JMP_STATE["i"]
+    _JMP_STATE["i"] = i + 1
+    if not _ovl_phase_active(cfg["phase"], _OVL_LATE):
+        return a
+    return _jmp_apply(a, _JMP_STATE["seed"], i, cfg)
+
+
+_JmpParent = Generator
+
+
+class Generator(_JmpParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._jmp_cfg = _jmp_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series):
+        if float(self._jmp_cfg["rate"]) <= 0.0:
+            yield from super().generate(n_series)
+            return
+        _JMP_STATE.update(cfg=self._jmp_cfg, seed=int(getattr(self, "_seed", 0)), i=0)
+        try:
+            yield from super().generate(n_series)
+        finally:
+            _JMP_STATE.update(cfg=None, i=0)
