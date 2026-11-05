@@ -174,3 +174,14 @@ c2 (c1 + jmp) was killed before training; replaced by **j1 = ovltrunk + jmp 1.0*
 Domains vs ovltrunk: transport +1.50, nature +0.41, sales +0.28; healthcare -1.84, web -0.65, energy -0.48, econ_fin -0.42.
 **jmp rejected:** the same h64-for-h256 trade as on the old base, net negative. It stays in the code, off.
 Next (queued 08:54): ovft25 (arms_k13h): trunk overlays 0.25 with the 12 health/energy families muted. This is a reasoned single update from the measured pattern: overlays help transport/econ_fin with dose but hurt health/energy.
+
+## Verify: ovft25 (grid_k13, seed 0, 2026-11-05) - ACCEPTED, new candidate
+Trunk overlays 0.25 / 0.25, 12 health/energy families muted (arms_k13h).
+
+| Comparison | mean of files | per file | h64 / h256 / h720 |
+|---|---|---|---|
+| ovft25 vs base | **+0.98%** | +0.72 +1.28 +0.84 +0.74 +1.21 +1.08 | +1.43 / +1.49 / +0.01 |
+| ovft25 vs ovltrunk | **+0.20%** | +0.23 +0.40 +0.16 -0.18 +0.14 +0.46 | +0.47 / +0.16 / -0.03 |
+
+Domains vs base: transport +2.63, econ_fin +1.73, sales +1.20, nature +0.78, web +0.13, healthcare 0.00, energy -0.26. Muting removed the health loss and kept the dose gains.
+Candidate = king + lcpr + ovl(0.25/0.25, trunk, family_rate_mult health/energy 0). Bench gate on its ckpt is running (bench_ovft25.sh).
