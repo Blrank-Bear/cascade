@@ -185,3 +185,15 @@ Trunk overlays 0.25 / 0.25, 12 health/energy families muted (arms_k13h).
 
 Domains vs base: transport +2.63, econ_fin +1.73, sales +1.20, nature +0.78, web +0.13, healthcare 0.00, energy -0.26. Muting removed the health loss and kept the dose gains.
 Candidate = king + lcpr + ovl(0.25/0.25, trunk, family_rate_mult health/energy 0). Bench gate on its ckpt is running (bench_ovft25.sh).
+
+## Bench gate: ovft25 vs base (2026-11-05) - PASSES
+Diagnostic 4-suite gate (FEV 65 tasks as the suite): **win rate 0.604 ≥ 0.5**, avg ratio 0.9956, better on every suite.
+
+| Suite | ratio | LCB | win rate |
+|---|---|---|---|
+| GIFT | 0.9989 | 0.9956 | 0.536 |
+| BOOM | 0.9902 | 0.9877 | 0.603 |
+| TIME | 0.9948 | 0.9910 | 0.724 |
+| FEV | 0.9984 | 0.9953 | 0.554 |
+
+Slightly lower than ovltrunk's 0.630 (GIFT 0.536 vs 0.577), still clear of the bar. Next: ovft25 on seed 1 (grid_k13s1). It is the candidate's first and only run there; needed before any submission decision.
