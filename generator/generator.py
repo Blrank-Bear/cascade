@@ -32204,3 +32204,88 @@ class Generator(_OvfParent):
             yield from super().generate(n_series)
         finally:
             _OVF_STATE.update(on=False, last=None, cur=None)
+
+
+# ── qnt: reporting-resolution quantization of records (switchable; port of c251 v2_quant) ──
+# Real feeds report on a coarse tick: repeated values, partial flat runs, heavier-tailed diffs.
+# On the old base, quant 0.5 was +0.15% over 5 seeds (t 2.17), positive at every horizon
+# (notes/V2_EVAL_FACTS.md). With probability `rate` per record, each channel is rounded to a
+# "nice" tick (1, 2 or 5 x 10^k) near rel times its median absolute step, rel log-uniform in
+# [rel_res_min, rel_res_max]. Integer-valued and step-free (constant) channels are left alone.
+# Applied after the ovl overlays (feeds round the underlying signal). v2_qnt.json; rate 0 = off.
+_QNT_TAG = 0x7A2F0201
+_QNT_FILE = "v2_qnt.json"
+_QNT_DEFAULTS = {"rate": 0.0, "rel_res_min": 0.2, "rel_res_max": 3.0}
+_QNT_STATE = {"cfg": None, "seed": 0, "i": 0}
+_QNT_RECORD = _k0_record
+
+
+def _qnt_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _QNT_FILE
+    if not path.is_file():
+        return dict(_QNT_DEFAULTS)
+    return {**_QNT_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _qnt_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _QNT_TAG], spawn_key=(i,)))
+
+
+def _qnt_nice_tick(q: float) -> float:
+    base = 10.0 ** np.floor(np.log10(q))
+    mantissa = min((1.0, 2.0, 5.0, 10.0), key=lambda m: abs(np.log(q / (m * base))))
+    return float(mantissa * base)
+
+
+def _qnt_typical_step(ch: np.ndarray) -> float:
+    d = np.abs(np.diff(ch))
+    d = d[d > 0]
+    return float(np.median(d)) if d.size else 0.0
+
+
+def _qnt_is_integer(ch: np.ndarray) -> bool:
+    return bool(np.all(ch == np.round(ch)))
+
+
+def _qnt_channel(ch: np.ndarray, rng, cfg: dict) -> np.ndarray:
+    step = _qnt_typical_step(ch)
+    if step <= 0.0 or _qnt_is_integer(ch):
+        return ch
+    tick = _qnt_nice_tick(step * _ovl_log_uniform(rng, float(cfg["rel_res_min"]), float(cfg["rel_res_max"])))
+    return np.round(ch / tick) * tick
+
+
+def _qnt_apply(a: np.ndarray, seed: int, i: int, cfg: dict) -> np.ndarray:
+    rng = _qnt_rng(seed, i)
+    if rng.random() >= float(cfg["rate"]):
+        return a
+    return _ovl_safe(a, np.stack([_qnt_channel(ch, rng, cfg) for ch in a]))
+
+
+def _k0_record(x):
+    a = _QNT_RECORD(x)
+    cfg = _QNT_STATE["cfg"]
+    if a is None or cfg is None:
+        return a
+    i = _QNT_STATE["i"]
+    _QNT_STATE["i"] = i + 1
+    return _qnt_apply(a, _QNT_STATE["seed"], i, cfg)
+
+
+_QntParent = Generator
+
+
+class Generator(_QntParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._qnt_cfg = _qnt_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series):
+        if float(self._qnt_cfg["rate"]) <= 0.0:
+            yield from super().generate(n_series)
+            return
+        _QNT_STATE.update(cfg=self._qnt_cfg, seed=int(getattr(self, "_seed", 0)), i=0)
+        try:
+            yield from super().generate(n_series)
+        finally:
+            _QNT_STATE.update(cfg=None, i=0)
