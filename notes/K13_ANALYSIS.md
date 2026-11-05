@@ -151,3 +151,15 @@ Goldens are byte-identical to the unchanged king (`tests/golden/run_k13.sh`). Th
 | FEV | 65 | 0.9973 | 0.9945 | 0.585 |
 
 **Passes: win rate 0.630 ≥ 0.5**, avg ratio 0.995 (better on every suite). Unlike jsz05dr60, the overlay gain is broad. Files: ledger/benchgate4diag_k13_ovltrunk_vs_base.json, ledger/benchgate4_k13_ovltrunk_vs_base.json.
+
+## Verify: c1 = ovltrunk + qnt 0.5 (grid_k13, seed 0, 2026-11-05)
+Paired windows (tools: .claude-work/tmp/pair_arms.py), same 6 files:
+
+| Comparison | mean of files | per file | h64 / h256 / h720 |
+|---|---|---|---|
+| ovltrunk vs base | +0.78% | +0.49 +0.88 +0.67 +0.92 +1.08 +0.62 | +0.96 / +1.33 / +0.04 |
+| c1 vs base | +0.56% | +0.20 +0.44 +0.57 +0.63 +0.88 +0.63 | +0.87 / +1.03 / -0.22 |
+| **c1 vs ovltrunk** | **-0.22%** | -0.29 -0.44 -0.11 -0.29 -0.20 +0.01 | -0.09 / -0.31 / -0.26 |
+
+**qnt rejected:** it degrades on 5/6 files and at every horizon (losses in econ_fin, nature, sales). This matches the 8-seed ledger figure of q50 (+0.06%, t 0.85), not the earlier 5-seed +0.15%. qnt stays in the code, off.
+c2 (c1 + jmp) was killed before training; replaced by **j1 = ovltrunk + jmp 1.0** (arms_j1.json).
