@@ -138,3 +138,16 @@ Goldens are byte-identical to the unchanged king (`tests/golden/run_k13.sh`). Th
   - Queued arms_k13g: level-only vs amplitude-only at 0.2, to see which overlay carries the gain and which the damage.
   - Feature `ovf` (per-family rate multipliers); arms_k13h ovft25 = trunk 0.25 with health / energy families muted, including the novel-stream epi_season_decay (~5% of records).
   - Stream composition (seed 0, 951 records): held_rate 56%, epi_season_decay 5%, conditional_stability 5%, road_commute_counts 2%.
+
+## Bench gate: ovltrunk vs base (k13, 2026-11-05)
+
+4 suites on cuda, ckpts from grid_k13 seed 0. FEV scores 65/100 tasks (multivariate skipped), so the strict gate says "partial"; diagnostic gate treats the 65 as the suite (same method as the old jsz05dr60 check, which failed at 0.459).
+
+| Suite | n | ratio | LCB | win rate |
+|---|---|---|---|---|
+| GIFT | 97 | 0.9969 | 0.9937 | 0.577 |
+| BOOM | 7371 | 0.9925 | 0.9896 | 0.572 |
+| TIME | 98 | 0.9932 | 0.9897 | 0.786 |
+| FEV | 65 | 0.9973 | 0.9945 | 0.585 |
+
+**Passes: win rate 0.630 ≥ 0.5**, avg ratio 0.995 (better on every suite). Unlike jsz05dr60, the overlay gain is broad. Files: ledger/benchgate4diag_k13_ovltrunk_vs_base.json, ledger/benchgate4_k13_ovltrunk_vs_base.json.
