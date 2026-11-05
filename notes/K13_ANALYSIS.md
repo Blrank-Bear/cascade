@@ -208,3 +208,21 @@ Slightly lower than ovltrunk's 0.630 (GIFT 0.536 vs 0.577), still clear of the b
 
 (Paired-window metric, .claude-work/tmp/pair_arms.py.) ovft25 and ovltrunk are equal within noise. ovft25 stays the candidate: higher 2-seed mean, gate 0.604. Both are below today's ~0.9% level bar and near the ~0.6% bar of ~11-07. h720 stays flat in every arm.
 Next: lsn (port of lseason) at 0.3 on top of ovft25 (arms_l1), aimed at h720.
+
+## Verify: l1 = ovft25 + lsn 0.3 (grid_k13, seed 0, 2026-11-05) - neutral, not adopted
+
+| Comparison | mean of files | per file | h64 / h256 / h720 |
+|---|---|---|---|
+| l1 vs base | +1.05% | +0.62 +1.34 +0.72 +1.51 +1.24 +0.89 | +1.91 / +1.39 / -0.14 |
+| l1 vs ovft25 | +0.08% | -0.10 +0.06 -0.12 +0.78 +0.02 -0.20 | +0.49 / -0.11 / -0.15 |
+
+The aim (h720) failed: -0.15 vs ovft25. The +0.08 is one file (+0.78); 3/6 files are negative. Domains vs ovft25: energy +0.85, nature +0.66, web +0.62; econ_fin -0.94. Not adopted. lsn stays in the code, off.
+
+### Where we stand (2026-11-05 13:05 UTC)
+- Candidate ovft25: 2-seed +0.71% vs king + lcpr; bench gate 0.604.
+- Cheap levers tried on top, each verified once:
+  - qnt: -0.22%;
+  - jmp: -0.12%;
+  - lsn: +0.08%, i.e. neutral.
+- Every content port from the old base trades h64 against h256/h720. h720 has not moved in any arm. The 28m / 396-step screen may simply not train long-horizon skill, so h720 effects may not be visible here at all.
+- Upstream: no king sync (latest 00a1170, consensus worker-image change).
