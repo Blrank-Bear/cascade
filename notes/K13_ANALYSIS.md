@@ -197,3 +197,14 @@ Diagnostic 4-suite gate (FEV 65 tasks as the suite): **win rate 0.604 ≥ 0.5**,
 | FEV | 0.9984 | 0.9953 | 0.554 |
 
 Slightly lower than ovltrunk's 0.630 (GIFT 0.536 vs 0.577), still clear of the bar. Next: ovft25 on seed 1 (grid_k13s1). It is the candidate's first and only run there; needed before any submission decision.
+
+## Verify: ovft25 on seed 1 (grid_k13s1, 2026-11-05)
+
+| Comparison | s1 mean of files | per file | 2-seed mean |
+|---|---|---|---|
+| ovltrunk vs base | +0.51% | +0.29 +0.65 +0.28 +0.77 +0.64 +0.43 | +0.65% |
+| ovft25 vs base | +0.43% | +0.36 +0.77 +0.47 +0.86 +0.05 +0.07 | **+0.71%** |
+| ovft25 vs ovltrunk | -0.08% | +0.07 +0.11 +0.19 +0.10 -0.60 -0.36 | +0.06% |
+
+(Paired-window metric, .claude-work/tmp/pair_arms.py.) ovft25 and ovltrunk are equal within noise. ovft25 stays the candidate: higher 2-seed mean, gate 0.604. Both are below today's ~0.9% level bar and near the ~0.6% bar of ~11-07. h720 stays flat in every arm.
+Next: lsn (port of lseason) at 0.3 on top of ovft25 (arms_l1), aimed at h720.

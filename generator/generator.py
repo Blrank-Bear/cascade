@@ -32411,3 +32411,126 @@ class Generator(_JmpParent):
             yield from super().generate(n_series)
         finally:
             _JMP_STATE.update(cfg=None, i=0)
+
+
+# ── lsn: drifting-seasonal record replacement (switchable; port of c251 v2_lseason) ──
+# Every screen so far leaves h720 flat (ovltrunk +0.04 / +0.21, ovft25 +0.01 / +0.10 over seeds 0 / 1), and the
+# c268 content has no family whose seasonal level and amplitude drift slowly over the whole 4096 points.
+# On the old base, lseason30 was +0.18% (seed 0; h256 +0.54%). With probability `rate` per record (trunk phase by
+# default), every channel is replaced by a daily / sub-daily / weekly / annual-cadence seasonal profile
+# (1-4 harmonics, optionally x a weekly profile) with random-walk level and log-amplitude, Student-t /
+# GARCH noise, half the time shifted non-negative, then a random scale and offset. The record shape and the
+# group labels are unchanged. Applied after jmp (the outermost record layer). v2_lsn.json; rate 0 = off.
+_LSN_TAG = 0x7A2F0203
+_LSN_FILE = "v2_lsn.json"
+_LSN_PERIODS = (24, 48, 96, 144, 288, 7, 12, 52)
+_LSN_DEFAULTS = {"rate": 0.0, "weekly_share": 0.5, "level_vol": 0.002, "amp_vol": 0.002, "noise_min": 0.05,
+                 "noise_max": 0.5, "garch_share": 0.2, "tail_df_min": 2.5, "phase": "trunk"}
+_LSN_STATE = {"cfg": None, "seed": 0, "i": 0}
+_LSN_RECORD = _k0_record
+
+
+def _lsn_load_config(config_dir: str) -> dict:
+    path = Path(config_dir) / _LSN_FILE
+    if not path.is_file():
+        return dict(_LSN_DEFAULTS)
+    return {**_LSN_DEFAULTS, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+def _lsn_rng(seed: int, i: int) -> np.random.Generator:
+    return np.random.default_rng(np.random.SeedSequence([int(seed) & ((1 << 64) - 1), _LSN_TAG], spawn_key=(i,)))
+
+
+def _lsn_unit(x: np.ndarray) -> np.ndarray:
+    sd = float(x.std())
+    return (x - x.mean()) / sd if sd > 1e-12 else x - x.mean()
+
+
+def _lsn_profile(rng, t: np.ndarray, period: float) -> np.ndarray:
+    n_harmonics = int(rng.integers(1, 5))
+    k = np.arange(1, n_harmonics + 1)
+    amp = rng.standard_normal(n_harmonics) / k
+    phase = rng.uniform(0.0, 2.0 * np.pi, n_harmonics)
+    return np.sin(2.0 * np.pi * np.outer(t, k) / period + phase) @ amp
+
+
+def _lsn_garch(z: np.ndarray, a: float, b: float) -> np.ndarray:
+    var, out = 1.0, np.empty(z.size)
+    for t in range(z.size):
+        out[t] = np.sqrt(var) * z[t]
+        var = (1.0 - a - b) + a * out[t] * out[t] + b * var
+    return out
+
+
+def _lsn_innovations(rng, L: int, cfg: dict) -> np.ndarray:
+    """Unit-scale Student-t innovations, optionally with GARCH(1,1) volatility clusters."""
+    df = rng.uniform(float(cfg["tail_df_min"]), 30.0)
+    z = rng.standard_t(df, L) / np.sqrt(df / (df - 2.0))
+    if rng.random() >= float(cfg["garch_share"]):
+        return z
+    a, b = rng.uniform(0.02, 0.15), rng.uniform(0.80, 0.97)
+    return _lsn_garch(z, a, min(b, 0.995 - a))
+
+
+def _lsn_season(rng, t: np.ndarray, cfg: dict) -> np.ndarray:
+    period = float(rng.choice(_LSN_PERIODS))
+    season = _lsn_unit(_lsn_profile(rng, t, period))
+    if rng.random() < float(cfg["weekly_share"]) and period >= 24:
+        season = season * (1.0 + 0.5 * _lsn_unit(_lsn_profile(rng, t, 7.0 * period)))
+    return season
+
+
+def _lsn_scale(rng, y: np.ndarray) -> np.ndarray:
+    scale = _ovl_log_uniform(rng, 0.01, 1000.0)
+    return y * scale + (rng.normal(0.0, 3.0) * scale if rng.random() < 0.5 else 0.0)
+
+
+def _lsn_series(rng, L: int, cfg: dict) -> np.ndarray:
+    t = np.arange(L, dtype=np.float64)
+    season = _lsn_season(rng, t, cfg)
+    level = np.cumsum(rng.normal(0.0, float(cfg["level_vol"]), L)) * np.sqrt(L)
+    amp = np.exp(np.cumsum(rng.normal(0.0, float(cfg["amp_vol"]), L)))
+    noise = rng.uniform(float(cfg["noise_min"]), float(cfg["noise_max"])) * _lsn_innovations(rng, L, cfg)
+    y = level + amp * season + noise
+    if rng.random() < 0.5:
+        y = np.maximum(y - y.min(), 0.0)
+    return _lsn_scale(rng, y)
+
+
+def _lsn_apply(a: np.ndarray, seed: int, i: int, cfg: dict) -> np.ndarray:
+    rng = _lsn_rng(seed, i)
+    if rng.random() >= float(cfg["rate"]):
+        return a
+    C, L = a.shape
+    return _ovl_safe(a, np.stack([_lsn_series(rng, L, cfg) for _ in range(C)]))
+
+
+def _k0_record(x):
+    a = _LSN_RECORD(x)
+    cfg = _LSN_STATE["cfg"]
+    if a is None or cfg is None:
+        return a
+    i = _LSN_STATE["i"]
+    _LSN_STATE["i"] = i + 1
+    if not _ovl_phase_active(cfg["phase"], _OVL_LATE):
+        return a
+    return _lsn_apply(a, _LSN_STATE["seed"], i, cfg)
+
+
+_LsnParent = Generator
+
+
+class Generator(_LsnParent):
+    def __init__(self, config_dir: str, *, seed: int) -> None:
+        self._lsn_cfg = _lsn_load_config(config_dir)
+        super().__init__(config_dir, seed=seed)
+
+    def generate(self, n_series):
+        if float(self._lsn_cfg["rate"]) <= 0.0:
+            yield from super().generate(n_series)
+            return
+        _LSN_STATE.update(cfg=self._lsn_cfg, seed=int(getattr(self, "_seed", 0)), i=0)
+        try:
+            yield from super().generate(n_series)
+        finally:
+            _LSN_STATE.update(cfg=None, i=0)
