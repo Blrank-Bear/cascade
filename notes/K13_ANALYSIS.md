@@ -163,3 +163,14 @@ Paired windows (tools: .claude-work/tmp/pair_arms.py), same 6 files:
 
 **qnt rejected:** it degrades on 5/6 files and at every horizon (losses in econ_fin, nature, sales). This matches the 8-seed ledger figure of q50 (+0.06%, t 0.85), not the earlier 5-seed +0.15%. qnt stays in the code, off.
 c2 (c1 + jmp) was killed before training; replaced by **j1 = ovltrunk + jmp 1.0** (arms_j1.json).
+
+## Verify: j1 = ovltrunk + jmp 1.0 (grid_k13, seed 0, 2026-11-05)
+
+| Comparison | mean of files | per file | h64 / h256 / h720 |
+|---|---|---|---|
+| j1 vs base | +0.66% | +0.74 +1.18 +0.23 +0.77 +0.70 +0.31 | +1.43 / +0.58 / -0.04 |
+| **j1 vs ovltrunk** | **-0.12%** | +0.25 +0.31 -0.45 -0.15 -0.38 -0.31 | +0.48 / -0.76 / -0.08 |
+
+Domains vs ovltrunk: transport +1.50, nature +0.41, sales +0.28; healthcare -1.84, web -0.65, energy -0.48, econ_fin -0.42.
+**jmp rejected:** the same h64-for-h256 trade as on the old base, net negative. It stays in the code, off.
+Next (queued 08:54): ovft25 (arms_k13h): trunk overlays 0.25 with the 12 health/energy families muted. This is a reasoned single update from the measured pattern: overlays help transport/econ_fin with dose but hurt health/energy.
