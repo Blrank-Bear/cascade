@@ -7,7 +7,7 @@ set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 PY=$ROOT/.claude-work/venv/bin/python
 CASCADE=$ROOT/.claude-work/venv/bin/cascade
-KING=$ROOT/reference/kings/2026-10-22-04e226724e3b
+KING=${KING:-$ROOT/reference/kings/2026-10-22-04e226724e3b}  # env override: dedup against another archived king
 PROFILES=${*:-base j30}
 export NUMBA_CACHE_DIR=$ROOT/.claude-work/cache/numba OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 REPORT=$ROOT/submission/PREFLIGHT.json

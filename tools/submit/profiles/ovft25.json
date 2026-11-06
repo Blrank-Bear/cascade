@@ -1,0 +1,7 @@
+{"note": "k13 king 716765dc (refactored, goldens byte-identical) + lcpr (relative cooldown switch; same switch point as the king in production) + ovl level/amp overlays 0.25/0.25 in the trunk phase, 12 health/energy families muted. Screen: +0.98% (s0) / +0.43% (s1) vs king + lcpr; 4-suite bench gate win rate 0.604.",
+ "switches": {
+  "v2_lcpr.json": {"on": true},
+  "v2_ovl.json": {"level_rate": 0.25, "amp_rate": 0.25, "phase": "trunk",
+   "family_rate_mult": {"energy_load_price_solar": 0, "grid_flow": 0, "dispatch_price": 0, "spiky_price": 0, "intraday_spot_price": 0,
+     "clinical_bounded_vitals": 0, "epi_renewal": 0, "reported_epi_counts": 0, "epi_decay": 0, "physio_quasiperiodic": 0,
+     "epi_season_decay": 0, "surveillance_counts": 0}}}}
