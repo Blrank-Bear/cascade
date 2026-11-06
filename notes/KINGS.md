@@ -188,3 +188,20 @@ The assessments below are my judgment from reading the code, not measured result
   - Singleton groups were tested only once, combined with jumps (jsz05sing), on one seed
     (-0.98%), and dropped. That is a single-seed, multi-feature verdict, the same noise trap as
     mrovlg60.
+
+## Public duel receipts around reign 13 (receipts/index.json, fetched 2026-11-06 01:22 UTC)
+Gain = 1 - chal_geomean / king_geomean. The crown needs LCB > margin.
+
+| Duel | Gain | LCB | Margin | Result |
+|---|---|---|---|---|
+| 716765dc vs old king 04e22672 (11-04 01:36) | **+3.54%** | +2.08% | 0.50% | crowned |
+| 507800c2 (uid 163) vs 716765dc | -2.90% | -3.98% | 1.00% | lost |
+| d98061d3 (uid 160) vs 716765dc | +0.08% / -0.02% (rejudge) | -0.68% / -0.80% | 0.95% | lost |
+| 4c78bad0 (uid 165) vs 716765dc | -4.46% | -6.19% | 0.83% | lost |
+
+- Before 716765dc, the best challengers against 04e22672 reached:
+  - +1.0 to +1.7% gain (2ce24b62 +1.64%, eaea5955 +1.64%, 70a6e3c7 +1.68%);
+  - LCB of at most +0.5%.
+- Their LCB sat about 0.6-1.2 points below their gain.
+- The late-11-05 rows re-judge the same pairs; the results are unchanged.
+- **Lesson for our screen:** 716765dc beat c268 by +3.5% in production, but our 28m screen saw k13 vs our c251 base at +0.04%. The screen does not see the king's edge, so screen gains need not transfer one-to-one.
