@@ -100,3 +100,12 @@ export LIUM_API_KEY=...
 ### 5a. Re-check on upstream 1c8f6c4 (2026-11-06)
 
 Upstream main moved to `1c8f6c4` (DEC-CA-0067 bundle: quantile-head verdict from the v2b switch era, `image_decoupled_feature = "v2b-b10591aa"`). Re-ran the v2-contract verify on the unchanged package: **pass**, same corpus digest `18fadee6…`, same file hashes. Log: `submission/ovft25/logs/verify_v2_1c8f6c4.json`. Live `launch_preflight` still `blocked` at 12:35 UTC. Local note: `git -C upstream config core.fileMode false` (WSL marks every file mode-changed and blocks `pull`).
+
+### 5b. One-command submit (2026-11-06)
+
+`bash /mnt/d/CODE/Bittensor/cascade/cascade/tools/submit/submit_ovft25.sh` from WSL. Wallet `NM`, hotkey `hk2` (`5HEYumdH…GXvWa`, uid 166 on netuid 91, confirmed via `btcli wallet registrations`). Findings that shaped it:
+- `cascade submit --no-fund` verifies `across_launch` (v1 ∩ v2) and rejects the v2 `groups` field, so the submit must be funded (Lium key set). Then it binds the live contract and runs the full verify, which passes.
+- The cascade venv lacked `bittensor` (wallet signing, chain identity). Installed `-e '.[hippius,chain]'` (bittensor 11.3.0, the upstream pin). v2 verify after that: pass, digest unchanged.
+- Preflight `local_entry` (the 30 s quick determinism check) times out on this PC: about 44 s, the same on the native WSL disk. `submit` and trainer qualification use the full verify, so this is informational.
+- `submit` has no `--max-total-spend`. The Lium key budget is the hard cap.
+- Preflight with `--max-price 40 --max-spend 150`: everything passes except the network-side checks (`current_init`, `lane_active`, `live_contract`) and `local_entry`.
