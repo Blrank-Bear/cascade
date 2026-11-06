@@ -51,3 +51,48 @@ cascade reveal-status <PUBLIC_SS58> --watch
 
 - **Before any re-submit,** re-run the preflight: the package must match `MANIFEST.json`.
 - **Never edit `submission/` by hand.** Change the profile and rebuild.
+
+## 5. Current package: ovft25 (2026-11-06, replaces j30 / base)
+
+`submission/ovft25/generator/` (built from 5c8ed50, clean tree; `MANIFEST.json` beside it).
+
+**Contents:**
+- Current king 716765dc, refactored; goldens byte-identical.
+- `v2_lcpr.json {"on": true}`: switch at yield 10837 under the live contract (5e10 points / 32 children, n = 24,414,064), identical to the king.
+- `v2_ovl.json`: level/amp overlays 0.25/0.25 in the trunk phase, with 12 health/energy families muted.
+
+**Evidence:**
+
+| Check | Result |
+|---|---|
+| Screen vs king + lcpr | +0.98% (s0), +0.43% (s1), mean +0.71% |
+| 4-suite bench gate | win rate 0.604 |
+| Win needs (LCB > bar) | about 1.2-1.5% real gain |
+
+**Review (2026-11-06):**
+
+| Check | Result |
+|---|---|
+| Profile vs GPU-tested arm | identical switches |
+| Package output vs tested generator copy (97e1bcc) | identical sha256 over 300 production yields |
+| `verify` under upstream main `[v2.training]` (shards) | **pass**, deterministic, corpus digest `18fadee6…` |
+| dedup vs current king 716765dc | **pass**, no identical digest. Containment 0.966 is allowed: published king code is never a private copy |
+| requirements.txt / config.json | byte-identical to the king's (hash-locked) |
+| throughput, 1 core, production n | 12.1-13.3 yields/s vs 2.21 needed; the king's behaviour gives 16.3 |
+| peak RSS, 1500 yields | 878 MB (child limit 2048 MB) |
+| `verify_offline` / `verify_strict_guard` | fail by design (v1 ∩ v2 rejects `groups`) |
+| `verify --live` | **blocked by the network**, not the package. `status/v2.json` reports `launch_preflight: blocked` ("v2 worker image is not qualified for this release"), so `cascade submit` refuses with `live_status_unavailable` until the operator repins the image |
+
+**Steps (human only; keys in env vars, never in chat):**
+```bash
+cd upstream
+../.claude-work/venv/bin/cascade status --json | head        # wait until launch_preflight is no longer "blocked"
+../.claude-work/venv/bin/cascade verify ../submission/ovft25/generator --live --json   # must be ok
+../.claude-work/venv/bin/cascade preflight ../submission/ovft25/generator --lane a --hotkey <PUBLIC_SS58> --json
+export LIUM_API_KEY=...
+../.claude-work/venv/bin/cascade submit ../submission/ovft25/generator https://submissions.cascadesub.net \
+    --wallet-name <wallet> --wallet-hotkey <hotkey> --label ovft25 --yes
+../.claude-work/venv/bin/cascade reveal-status <PUBLIC_SS58> --watch
+```
+- Re-run the preflight first (`KING=$PWD/reference/kings/2026-11-04-716765dcf2f6 bash tools/submit/preflight.sh ovft25`) if anything changed. The package must match `MANIFEST.json`.
+- One hotkey, one submission per round: an admission rejection spends that round.
