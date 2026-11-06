@@ -96,3 +96,7 @@ export LIUM_API_KEY=...
 ```
 - Re-run the preflight first (`KING=$PWD/reference/kings/2026-11-04-716765dcf2f6 bash tools/submit/preflight.sh ovft25`) if anything changed. The package must match `MANIFEST.json`.
 - One hotkey, one submission per round: an admission rejection spends that round.
+
+### 5a. Re-check on upstream 1c8f6c4 (2026-11-06)
+
+Upstream main moved to `1c8f6c4` (DEC-CA-0067 bundle: quantile-head verdict from the v2b switch era, `image_decoupled_feature = "v2b-b10591aa"`). Re-ran the v2-contract verify on the unchanged package: **pass**, same corpus digest `18fadee6…`, same file hashes. Log: `submission/ovft25/logs/verify_v2_1c8f6c4.json`. Live `launch_preflight` still `blocked` at 12:35 UTC. Local note: `git -C upstream config core.fileMode false` (WSL marks every file mode-changed and blocks `pull`).
